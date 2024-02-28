@@ -8,6 +8,7 @@ format: pdf
 # Load packages
 library(dplyr)
 library(readr)
+library(data.table)
 
 # Define path for data
 path <- "/Users/pdgeraldo/Downloads/data_cf_all/"
@@ -20,18 +21,58 @@ Here we report the performance of the prognostic propensity score in estimating 
 We will use the first 20 DGPs (out of 77 different DGPs), corresponding to the "do it yourself" component of the 2016 ACIC competition.
 
 ```{r}
-covs <- read_csv(paste0(path,"x.csv"))
+covs <- data.table::fread(paste0(path,"x.csv"))
+
+# Iterate over different DGPs 
+# (1:20), corresponding to the do-it-yourself competition
+
+# Combine different simulations of same DGP
+# (1:100), keep sim identifier
+
+# First, capture the list of files to be used
+file_list <- 
+  list.files(paste0(path,"1"),
+             pattern = "*.csv", 
+             ignore.case = TRUE,
+             full.names = FALSE)
+
+# Create empty list to store data
+data <- list()
+
+for(i in file_list){
+  
+  data[[i]] <- data.table::fread(
+    file = paste0(path,"1/",i)
+  )[, sim_id := i]
+  # Add identifier to data
+  
+}
+# Combine the list into a single data frame
+data <- data.table::rbindlist(data)
 ```
 
 ## Estimators
 
 ```{r}
+# The estimators we are going to test are the following
+# Balance covariate alone: IPW, PS-matching, Ebal, Tfbal
+# Outcome model alone: Linear regression, Lin, GRF, Kbal
+# DR models: AIPW, TMLE, DML
+# Proposed estimators: 
+# 1) Prognostic Balance (E(Y0))
+# 2) Prognostic Propensity Score (E(D|Y0)) Balance
+# 3) Prognostic 
 
 ```
 
 ## Results
 
 ```{r}
+
+# Save table with missing cases
+data.table::fwrite(data,
+                   file = paste0(path_results, "/table_data.csv"),
+                   append = TRUE)
 
 ```
 
