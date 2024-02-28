@@ -4,12 +4,23 @@ subtitle: "Dorie et al. (2019)"
 format: pdf
 ---
 
+```{r, echo=FALSE}
+# Load packages
+library(dplyr)
+library(readr)
+
+# Define path for data
+path <- "/Users/pdgeraldo/Downloads/data_cf_all/"
+```
+
 Here we report the performance of the prognostic propensity score in estimating treatment effects according to the simulations in Dorie et al. (2019), corresponding to the 2016 data competition at the American Causal Inference Conference
 
 ## Simulation setup
 
+We will use the first 20 DGPs (out of 77 different DGPs), corresponding to the "do it yourself" component of the 2016 ACIC competition.
+
 ```{r}
-data <- read_csv()
+covs <- read_csv(paste0(path,"x.csv"))
 ```
 
 ## Estimators
