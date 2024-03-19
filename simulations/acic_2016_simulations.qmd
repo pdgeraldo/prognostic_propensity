@@ -9,49 +9,196 @@ format: pdf
 library(dplyr)
 library(readr)
 library(data.table)
+remotes::install_github("tlverse/sl3")
+library(sl3)
 
 # Define path for data
 path <- "/Users/pdgeraldo/Downloads/data_cf_all/"
+
+# Load the covariates
+covs <- data.table::fread(paste0(path,"x.csv"))
+data <- data.table::fread(paste0(path,"1/zymu_13.csv")) # For now, just for testing
+
 ```
 
-Here we report the performance of the prognostic propensity score in estimating treatment effects according to the simulations in Dorie et al. (2019), corresponding to the 2016 data competition at the American Causal Inference Conference
+Here we report the performance of the prognostic propensity score in estimating treatment effects according to the simulations in Dorie et al. (2019), corresponding to the 2016 data competition at the American Causal Inference Conference.
 
 ## Simulation setup
 
 We will use the first 20 DGPs (out of 77 different DGPs), corresponding to the "do it yourself" component of the 2016 ACIC competition.
 
 ```{r}
-covs <- data.table::fread(paste0(path,"x.csv"))
 
-# Iterate over different DGPs 
-# (1:20), corresponding to the do-it-yourself competition
+# Create container for the simulation results
+# dim: [n_estimators x n_sims x n_dgps] by [n_metrics]
 
-# Combine different simulations of same DGP
-# (1:100), keep sim identifier
+# Define number of simulations and number of GDPs to be tested
+n_sims <- 100
+n_dgps <- 20
 
-# First, capture the list of files to be used
-file_list <- 
-  list.files(paste0(path,"1"),
-             pattern = "*.csv", 
-             ignore.case = TRUE,
-             full.names = FALSE)
+# Define estimators and metrics to be used
+estimators <- c("Coeff:Linear","Coeff:Linear:Lin","Coeff:Lasso",
+                "Bal:PSM:Logit","Bal:PSM:Lasso","Bal:PSM:GRF","Bal:PSM:Kernel","Bal:PSM:SL",
+                "Bal:IPW:Logit","Bal:IPW:Lasso","Bal:IPW:GRF","Bal:IPW:Kernel","Bal:IPW:SL",
+                "Bal:Ebal:raw", "Bal:Ebal:expand","Bal:Kernel",
+                "G-comp:Lasso","G-comp:GRF","G-comp:Kernel","G-comp:SL",
+                "DR:AIPW:LogLin","DR:AIPW:GRF","DR:AIPW:Kernel","DR:AIPW:SL",
+                "DR:TMLE:LogLin","DR:TMLE:GRF","DR:TMLE:Kernel","DR:TMLE:SL",
+                "DR:DML:LogLin","DR:DML:GRF","DR:DML:Kernel","DR:DML:SL",
+                "Ebal:YO:Lin","Ebal:Y0:Lasso","Ebal:Y0:GRF","Ebal:Y0:Kernel","Ebal:Y0:SL",
+                "PPSM:LinLin","PPSM:LinLog","PPSM:GRF","PPSM:Krls","PPSM:SL",
+                "IPPW:LinLin","IPPW:LinLog","IPPW:GRF","IPPW:Krls","IPPW:SL"
+                )
+estimator_type <- c(rep("Coefficient", 3), rep("Balancing", 13), 
+                    rep("Imputation", 4), rep("Augmented", 12),
+                    rep("Prognostic", 13))
+metrics <- c("Bias", "RMSE", "MAE", "RESS", "Balance", "Time")
+
+# Simulation results storage
+results <- 
+  data.frame(dgp = NA, sim = NA,
+             estimator =,
+             )
+
+
+###########################
+### --- SIMULATIONS --- ### 
+###########################
 
 # Create empty list to store data
 data <- list()
 
-for(i in file_list){
+# Iterate over different DGPs 
+# (1:20), corresponding to the do-it-yourself part of the competition
+dgp <- 1:n_dgps
+
+for(i in dgp){
   
-  data[[i]] <- data.table::fread(
-    file = paste0(path,"1/",i)
-  )[, sim_id := i]
-  # Add identifier to data
+  # Combine different simulations of same DGP
+  # (1:100), keep sim identifier
+  
+  # First, capture the list of files to be used
+  file_list <- 
+    list.files(paste0(path,"1"), # Switch to the i later
+               pattern = "*.csv", 
+               ignore.case = TRUE,
+               full.names = FALSE)
+  
+  for(j in file_list){
+    
+    data[[j]] <- data.table::fread(
+      file = paste0(path,"1/",j)
+    )[, sim_id := j] # Add identifier to data
+    
+  }
+  
+  # Combine the list into a single data frame
+  data <- data.table::rbindlist(data)
+  
+  
+  ###############################
+  ### --- BUILDING BLOCKS --- ### 
+  ###############################
+  
+  # Estimate the models to later compute treatment effects: 
+  # Propensity scores and outcome models
+  
+  ######################
+  ## Propensity score ##
+  ######################
+  
+  # Logistic regression
+  
+  ps_lm <- ()
+  
+  # LASSO
+  
+  ps_lasso <- ()
+  
+  # Random forest
+  
+  ps_grf <- ()
+  
+  # Kernel regression
+  
+  ps_krls <- ()
+  
+  
+  ####################
+  ## Outcome models ##
+  ####################
+  
+  # Linear regression
+  
+  y0_lm <- ()
+  y1_lm <- ()
+  
+  y0_lin <- ()
+  y1_lin <- ()
+  
+  # LASSO
+  
+  y0_lasso
+  y1_lasso
+  
+  # Random forest
+  
+  y0_grf
+  y1_grf
+  
+  # Kernel regression
+  
+  y0_krls
+  y1_krls
+  
+  
+  
+  ##########################
+  ### --- ESTIMATORS --- ###
+  ##########################
+  
+  #############################
+  ## Regression Coefficients ##
+  #############################
+  
+  ###################
+  ## G-Computation ##
+  ###################
+  
+  ##############
+  ## Matching ##
+  ##############
+  
+  ###############
+  ## Weighting ##
+  ###############
+  
+  ###########################
+  ## Augmented  estimators ##
+  ###########################
+  
+  # Augmented-IPW
+  
+  # TMLE
+  
+  # DML
+  
+  #################################
+  ## Prognostic Propensity score ##
+  #################################
+  
+  # PPS-Matching (logit/lasso/forest/krls)
+  
+  # PPS-Weighting (logit/lasso/forest/krls)
+  
+  # Y0-weighting (logit/lasso/forest/krls)
   
 }
-# Combine the list into a single data frame
-data <- data.table::rbindlist(data)
+
+
 ```
 
-## Estimators
+## Estimation
 
 ```{r}
 # The estimators we are going to test are the following
@@ -62,6 +209,9 @@ data <- data.table::rbindlist(data)
 # 1) Prognostic Balance (E(Y0))
 # 2) Prognostic Propensity Score (E(D|Y0)) Balance
 # 3) Prognostic 
+
+
+
 
 ```
 
