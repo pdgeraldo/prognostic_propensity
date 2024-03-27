@@ -6,18 +6,29 @@ format: pdf
 
 ```{r, echo=FALSE}
 # Load packages
-library(dplyr)
-library(readr)
+# devtools::install_github("tlverse/tlverse")
+#library(dplyr)
 library(data.table)
-remotes::install_github("tlverse/sl3")
-library(sl3)
+library(estimatr) # Fast regression and Lin
+library(gKRLS) # Kernel regression
+library(tlverse)
+library(sl3) # SuperLearner
+library(tmle3) # Targeted Learning
+
+# For parallel processing (not working)
+#library(future)
+#ncores <- availableCores()-1
+#plan(multicore, workers = ncores)
 
 # Define path for data
-path <- "/Users/pdgeraldo/Downloads/data_cf_all/"
+path <- "/Users/pablogeraldo/Documents/data_cf_all/"
 
 # Load the covariates
-covs <- data.table::fread(paste0(path,"x.csv"))
-data <- data.table::fread(paste0(path,"1/zymu_13.csv")) # For now, just for testing
+covs <- data.table::fread(paste0(path,"x.csv"),
+                          stringsAsFactors = TRUE)
+
+# For now, just for testing, load one iteration of the outcome
+outcomes <- data.table::fread(paste0(path,"1/zymu_13.csv")) 
 
 ```
 
@@ -27,6 +38,7 @@ Here we report the performance of the prognostic propensity score in estimating 
 
 We will use the first 20 DGPs (out of 77 different DGPs), corresponding to the "do it yourself" component of the 2016 ACIC competition.
 
+### Premilinaries
 ```{r}
 
 # Create container for the simulation results
@@ -37,7 +49,7 @@ n_sims <- 100
 n_dgps <- 20
 
 # Define estimators and metrics to be used
-estimators <- c("Coeff:Linear","Coeff:Linear:Lin","Coeff:Lasso",
+estimators <- c("Coeff:Linear","Coeff:Linear:Lin",
                 "Bal:PSM:Logit","Bal:PSM:Lasso","Bal:PSM:GRF","Bal:PSM:Kernel","Bal:PSM:SL",
                 "Bal:IPW:Logit","Bal:IPW:Lasso","Bal:IPW:GRF","Bal:IPW:Kernel","Bal:IPW:SL",
                 "Bal:Ebal:raw", "Bal:Ebal:expand","Bal:Kernel",
@@ -48,8 +60,8 @@ estimators <- c("Coeff:Linear","Coeff:Linear:Lin","Coeff:Lasso",
                 "Ebal:YO:Lin","Ebal:Y0:Lasso","Ebal:Y0:GRF","Ebal:Y0:Kernel","Ebal:Y0:SL",
                 "PPSM:LinLin","PPSM:LinLog","PPSM:GRF","PPSM:Krls","PPSM:SL",
                 "IPPW:LinLin","IPPW:LinLog","IPPW:GRF","IPPW:Krls","IPPW:SL"
-                )
-estimator_type <- c(rep("Coefficient", 3), rep("Balancing", 13), 
+)
+estimator_type <- c(rep("Coefficient", 2), rep("Balancing", 13), 
                     rep("Imputation", 4), rep("Augmented", 12),
                     rep("Prognostic", 13))
 metrics <- c("Bias", "RMSE", "MAE", "RESS", "Balance", "Time")
@@ -58,7 +70,7 @@ metrics <- c("Bias", "RMSE", "MAE", "RESS", "Balance", "Time")
 results <- 
   data.frame(dgp = NA, sim = NA,
              estimator =,
-             )
+  )
 
 
 ###########################
@@ -94,18 +106,107 @@ for(i in dgp){
   
   # Combine the list into a single data frame
   data <- data.table::rbindlist(data)
+  ```
   
   
-  ###############################
-  ### --- BUILDING BLOCKS --- ### 
-  ###############################
-  
+  ### Building blocks
+  ```{r}
   # Estimate the models to later compute treatment effects: 
   # Propensity scores and outcome models
+  
+  # First, combine outcome and covs in a single data
+  data <- cbind(outcomes, covs)
+  data <- data |> dplyr::mutate(y = ifelse(z==0, y0, y1))
+  
+  # Then, benchmark estimates
+  ate <- mean(data$y1 - data$y0)
+  dim <- mean(data$y[data$z==1]) - mean(data$y[data$z==0])
+  
+  # Then, for the SuperLearner, instante the models to be used
+  
+  ######################
+  # Instantiate learners to be used
+  ######################
+  
+  # Mean model
+  lrn_mean <- Lrnr_mean$new()
+  
+  # Unregularized linear model, main terms
+  lrn_glm <- Lrnr_glm$new()
+  
+  # Regularized regression (lasso, elastic net, and ridge)
+  lrn_lasso <- Lrnr_glmnet$new(alpha = 0)
+  lrn_en025 <- Lrnr_glmnet$new(alpha = 0.25)
+  lrn_en050 <- Lrnr_glmnet$new(alpha = 0.5)
+  lrn_en075 <- Lrnr_glmnet$new(alpha = 0.75)
+  lrn_ridge <- Lrnr_glmnet$new(alpha = 1)
+  
+  # Additional, more flexible learners
+  lrn_pspl <- Lrnr_polspline$new() # polynomial splines
+  lrn_earth <- Lrnr_earth$new() # multivariate adaptive regression splines
+  #lrn_hal <- Lrnr_hal9001$new() # highly adaptive lasso (very slow!)
+  
+  # Tree-based methods
+  lrn_ranger <- Lrnr_ranger$new()
+  lrn_xgb <- Lrnr_xgboost$new()
+  #lrn_grf <- Lrnr_grf$new() # makes the SL fail (?)
+  
+  # Add some extra learners
+  lrn_gam <- Lrnr_gam$new()
+  lrn_bayesglm <- Lrnr_bayesglm$new()
+  
+  ########################
+  # Create learners stack
+  ########################
+  
+  stack <- Stack$new(
+    lrn_mean, lrn_glm, 
+    lrn_lasso, lrn_ridge,
+    lrn_en025, lrn_en050, lrn_en075, 
+    lrn_pspl, lrn_earth, 
+    lrn_ranger, lrn_xgb
+  )
+  
+  #####################
+  # Instantiate the meta-learners
+  #####################
+  
+  # Non-negative least squares
+  sl <- Lrnr_sl$new(learners = stack,
+                    keep_extra = TRUE,
+                    metalearner = Lrnr_nnls$new()
+  )
   
   ######################
   ## Propensity score ##
   ######################
+  
+  # Estimators outside the SL: lin, grf, kernel
+  
+  # KRLS pending until I figure this out
+  # Lin not sure it makes sense for pscore
+  
+  
+  
+  # For the SuperLearner, first define the tasks, then train
+  
+  # Task: Propensity score estimation (predict treatment given covariates)
+  task_ps <- sl3_Task$new(
+    data = data,
+    outcome = "z",
+    outcome_type = "binomial",
+    covariates = names(covs)
+  )
+  
+  # Train learners
+  
+  set.seed(24500-03)
+  start_time <- proc.time()
+  
+  sl_ps <- sl$train(task = task_y)
+  
+  runtime <- proc.time() - start_time
+  runtime
   
   # Logistic regression
   
@@ -122,6 +223,52 @@ for(i in dgp){
   # Kernel regression
   
   ps_krls <- ()
+  
+  
+  
+  
+  # Single regression models (predict Y using covariates)
+  task_y <- sl3_Task$new(
+    data = data,
+    outcome = "y",
+    outcome_type = "continuous",
+    covariates = names(covs)
+  )
+  
+  # Separate regression models (predict Y0, Y1 using covariates)
+  task_y0 <- sl3_Task$new(
+    data = subset(data, z == 0),
+    outcome = "y",
+    outcome_type = "continuous",
+    covariates = names(covs)
+  )
+  
+  task_y1 <- sl3_Task$new(
+    data = subset(data, z == 1),
+    outcome = "y",
+    outcome_type = "continuous",
+    covariates = names(covs)
+  )
+  
+  
+  
+  
+  
+  # Train (test time for 1 iteration)
+  
+  set.seed(24500-03)
+  start_time <- proc.time()
+  
+  sl_fit <- sl$train(task = task_y)
+  #stack_fit <- stack$train(task = task_y)
+  
+  runtime <- proc.time() - start_time
+  runtime
+  
+  # Obtaining predictions from the stack and SL
+  
+  yhat_sl <- sl_fit$predcit(task = task_y) # General SL predictions
+  yhat_lasso <- sl_fit$learner_fits$Lrnr_glmnet_NULL_deviance_10_0_100_TRUE_FALSE$predict()
   
   
   ####################
@@ -198,7 +345,21 @@ for(i in dgp){
 
 ```
 
-## Estimation
+### Propensity score
+
+```{r}
+
+```
+
+
+### Outcome models
+
+```{r}
+
+```
+
+
+### Treatment effect estimation
 
 ```{r}
 # The estimators we are going to test are the following
@@ -213,18 +374,10 @@ for(i in dgp){
 
 
 
-```
-
-## Results
-
-```{r}
-
 # Save table with missing cases
 data.table::fwrite(data,
                    file = paste0(path_results, "/table_data.csv"),
                    append = TRUE)
 
 ```
-
-
-
+  
