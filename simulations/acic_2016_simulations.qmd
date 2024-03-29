@@ -4,7 +4,7 @@ subtitle: "Dorie et al. (2019)"
 format: pdf
 ---
 
-```{r, echo=FALSE}
+```{r}
 # Load packages
 # devtools::install_github("tlverse/tlverse")
 #library(dplyr)
@@ -39,8 +39,8 @@ Here we report the performance of the prognostic propensity score in estimating 
 We will use the first 20 DGPs (out of 77 different DGPs), corresponding to the "do it yourself" component of the 2016 ACIC competition.
 
 ### Premilinaries
-```{r}
 
+```{r}
 # Create container for the simulation results
 # dim: [n_estimators x n_sims x n_dgps] by [n_metrics]
 
@@ -50,28 +50,24 @@ n_dgps <- 20
 
 # Define estimators and metrics to be used
 estimators <- c("Coeff:Linear","Coeff:Linear:Lin",
-                "Bal:PSM:Logit","Bal:PSM:Lasso","Bal:PSM:GRF","Bal:PSM:Kernel","Bal:PSM:SL",
-                "Bal:IPW:Logit","Bal:IPW:Lasso","Bal:IPW:GRF","Bal:IPW:Kernel","Bal:IPW:SL",
-                "Bal:Ebal:raw", "Bal:Ebal:expand","Bal:Kernel",
-                "G-comp:Lasso","G-comp:GRF","G-comp:Kernel","G-comp:SL",
-                "DR:AIPW:LogLin","DR:AIPW:GRF","DR:AIPW:Kernel","DR:AIPW:SL",
-                "DR:TMLE:LogLin","DR:TMLE:GRF","DR:TMLE:Kernel","DR:TMLE:SL",
-                "DR:DML:LogLin","DR:DML:GRF","DR:DML:Kernel","DR:DML:SL",
-                "Ebal:YO:Lin","Ebal:Y0:Lasso","Ebal:Y0:GRF","Ebal:Y0:Kernel","Ebal:Y0:SL",
-                "PPSM:LinLin","PPSM:LinLog","PPSM:GRF","PPSM:Krls","PPSM:SL",
-                "IPPW:LinLin","IPPW:LinLog","IPPW:GRF","IPPW:Krls","IPPW:SL"
+                "Bal:PSM:Logit","Bal:PSM:Lasso","Bal:PSM:xgboost","Bal:PSM:Krls","Bal:PSM:SL",
+                "Bal:IPW:Logit","Bal:IPW:Lasso","Bal:IPW:xgboost","Bal:IPW:Krls","Bal:IPW:SL",
+                "Bal:Ebal:raw", "Bal:Ebal:expand",#"Bal:Kernel",
+                "Bal:Y0:Lin","Bal:Y0:Lasso","Bal:Y0:xgboost","Bal:Y0:Krls","Bal:Y0:SL",
+                "G-comp:one:Lasso","G-comp:one:xgboost","G-comp:one:Krls","G-comp:one:SL",
+                "G-comp:cross:Lasso","G-comp:cross:xgboost","G-comp:cross:Krls","G-comp:cross:SL",
+                "DR:AIPW:LogLin","DR:AIPW:xgboost","DR:AIPW:grf","DR:AIPW:Krls","DR:AIPW:SL",
+                "DR:TMLE:LogLin","DR:TMLE:xgboost","DR:TMLE:grf","DR:TMLE:Krls","DR:TMLE:SL",
+                "DR:DML:LogLin","DR:DML:xgboost","DR:DML:Krls","DR:DML:SL",
+                "PPSM:LinLin","PPSM:LinLog","PPSM:xgboost","PPSM:Krls","PPSM:SL",
+                "IPPW:LinLin","IPPW:LinLog","IPPW:xgboost","IPPW:Krls","IPPW:SL"
 )
-estimator_type <- c(rep("Coefficient", 2), rep("Balancing", 13), 
-                    rep("Imputation", 4), rep("Augmented", 12),
-                    rep("Prognostic", 13))
-metrics <- c("Bias", "RMSE", "MAE", "RESS", "Balance", "Time")
+metrics <- c("DGP","Simulation","Estimator","Bias", "RMSE", "MAE", "RESS", "Balance", "Time")
 
 # Simulation results storage
-results <- 
-  data.frame(dgp = NA, sim = NA,
-             estimator =,
-  )
-
+results <- matrix(nrow = n_sims * n_dgps * length(estimators),
+                  ncol = length(metrics)) |> as.data.table()
+names(results) <- metrics
 
 ###########################
 ### --- SIMULATIONS --- ### 
@@ -106,11 +102,12 @@ for(i in dgp){
   
   # Combine the list into a single data frame
   data <- data.table::rbindlist(data)
-  ```
+```
   
   
-  ### Building blocks
-  ```{r}
+### Building blocks
+  
+```{r}
   # Estimate the models to later compute treatment effects: 
   # Propensity scores and outcome models
   
@@ -121,6 +118,7 @@ for(i in dgp){
   # Then, benchmark estimates
   ate <- mean(data$y1 - data$y0)
   dim <- mean(data$y[data$z==1]) - mean(data$y[data$z==0])
+  data$z <- as.factor(data$z)
   
   # Then, for the SuperLearner, instante the models to be used
   
@@ -155,16 +153,26 @@ for(i in dgp){
   lrn_gam <- Lrnr_gam$new()
   lrn_bayesglm <- Lrnr_bayesglm$new()
   
+  # Input formula for the krls regression
+    fml <- 
+    as.formula(
+      paste("y ~",
+            paste(paste(c("s(z +"),
+                        paste(names(covs), collapse = "+")),
+                  c(", bs = \"gKRLS\")"))))
+    lrn_krls <- Lrnr_gam$new(fml)
+  
   ########################
   # Create learners stack
   ########################
   
   stack <- Stack$new(
-    lrn_mean, lrn_glm, 
-    lrn_lasso, lrn_ridge,
-    lrn_en025, lrn_en050, lrn_en075, 
-    lrn_pspl, lrn_earth, 
-    lrn_ranger, lrn_xgb
+    "mean" = lrn_mean, "glm" = lrn_glm, 
+    "lasso" = lrn_lasso, "ridge" = lrn_ridge,
+    "en025" = lrn_en025, "en050" = lrn_en050, "en075" = lrn_en075, 
+    "polspline" = lrn_pspl, "earth" = lrn_earth, 
+    "ranger" = lrn_ranger, "xgboost" = lrn_xgb,
+    "gam" = lrn_gam, "bglm" = lrn_bayesglm, "krls" = lrn_krls
   )
   
   #####################
@@ -197,13 +205,47 @@ for(i in dgp){
     outcome_type = "binomial",
     covariates = names(covs)
   )
+    
+    # Single regression models (predict Y using covariates)
+  task_y <- sl3_Task$new(
+    data = data,
+    outcome = "y",
+    outcome_type = "continuous",
+    covariates = c("z", names(covs))
+  )
+  
+  # Separate regression models (predict Y0, Y1 using covariates)
+  task_y0 <- sl3_Task$new(
+    data = subset(data, z == 0),
+    outcome = "y",
+    outcome_type = "continuous",
+    covariates = names(covs)
+  )
+  
+  task_y1 <- sl3_Task$new(
+    data = subset(data, z == 1),
+    outcome = "y",
+    outcome_type = "continuous",
+    covariates = names(covs)
+  )
+  
+  # PO imputation tasks  
+  task_y0hat <- sl3_Task$new(
+    data = data[,z:=0],
+    covariates = 
+  )  
+    
   
   # Train learners
+  fit_gKRLS <- mgcv::gam(fml, data = data)
+  fit_gKRLS
+  calculate_effects(fit_gKRLS, variables = "z")
   
   set.seed(24500-03)
   start_time <- proc.time()
   
-  sl_ps <- sl$train(task = task_y)
+  sl_y <- sl$train(task = task_y)
+  #krls_y <- lrn_krls$train(task = task_y)
   
   runtime <- proc.time() - start_time
   runtime
@@ -223,32 +265,8 @@ for(i in dgp){
   # Kernel regression
   
   ps_krls <- ()
+
   
-  
-  
-  
-  # Single regression models (predict Y using covariates)
-  task_y <- sl3_Task$new(
-    data = data,
-    outcome = "y",
-    outcome_type = "continuous",
-    covariates = names(covs)
-  )
-  
-  # Separate regression models (predict Y0, Y1 using covariates)
-  task_y0 <- sl3_Task$new(
-    data = subset(data, z == 0),
-    outcome = "y",
-    outcome_type = "continuous",
-    covariates = names(covs)
-  )
-  
-  task_y1 <- sl3_Task$new(
-    data = subset(data, z == 1),
-    outcome = "y",
-    outcome_type = "continuous",
-    covariates = names(covs)
-  )
   
   
   
@@ -341,21 +359,19 @@ for(i in dgp){
   # Y0-weighting (logit/lasso/forest/krls)
   
 }
-
-
 ```
 
 ### Propensity score
 
 ```{r}
-
+caca
 ```
 
 
 ### Outcome models
 
 ```{r}
-
+caca
 ```
 
 
@@ -372,7 +388,10 @@ for(i in dgp){
 # 3) Prognostic 
 
 
-
+# DR: Generalized random forest : causal forest
+grf <- causal_forest(X = data[covs], Y = data$y, W = data$z)
+aipw_grf <- average_treatment_effect(grf, target.sample = "all", method = "AIPW")
+tmle_grf <- average_treatment_effect(grf, target.sample = "all", method = "TMLE")
 
 # Save table with missing cases
 data.table::fwrite(data,
@@ -380,4 +399,3 @@ data.table::fwrite(data,
                    append = TRUE)
 
 ```
-  
