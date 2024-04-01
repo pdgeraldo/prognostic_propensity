@@ -30,6 +30,14 @@ covs <- data.table::fread(paste0(path,"x.csv"),
 # For now, just for testing, load one iteration of the outcome
 outcomes <- data.table::fread(paste0(path,"1/zymu_13.csv")) 
 
+# First, combine outcome and covs in a single data
+data <- cbind(outcomes, covs)
+data <- data |> dplyr::mutate(y = ifelse(z==0, y0, y1))
+
+# Then, benchmark estimates
+ate <- mean(data$y1 - data$y0)
+dim <- mean(data$y[data$z==1]) - mean(data$y[data$z==0])
+
 ```
 
 Here we report the performance of the prognostic propensity score in estimating treatment effects according to the simulations in Dorie et al. (2019), corresponding to the 2016 data competition at the American Causal Inference Conference.
@@ -55,30 +63,361 @@ n_sims <- 100
 n_dgps <- 20
 
 # Define estimators and metrics to be used
-estimators <- c("Coeff:Linear","Coeff:Linear:Lin",
-                "Bal:PSM:Logit","Bal:PSM:Lasso","Bal:PSM:xgboost","Bal:PSM:Krls","Bal:PSM:SL",
-                "Bal:IPW:Logit","Bal:IPW:Lasso","Bal:IPW:xgboost","Bal:IPW:Krls","Bal:IPW:SL",
-                "Bal:Ebal:raw", "Bal:Ebal:expand",#"Bal:Kernel",
-                "Bal:Y0:Lin","Bal:Y0:Lasso","Bal:Y0:xgboost","Bal:Y0:Krls","Bal:Y0:SL",
-                "G-comp:one:Lasso","G-comp:one:xgboost","G-comp:one:Krls","G-comp:one:SL",
-                "G-comp:cross:Lasso","G-comp:cross:xgboost","G-comp:cross:Krls","G-comp:cross:SL",
-                "DR:AIPW:LogLin","DR:AIPW:xgboost","DR:AIPW:grf","DR:AIPW:Krls","DR:AIPW:SL",
-                "DR:TMLE:LogLin","DR:TMLE:xgboost","DR:TMLE:grf","DR:TMLE:Krls","DR:TMLE:SL",
-                "DR:DML:LogLin","DR:DML:xgboost","DR:DML:Krls","DR:DML:SL",
-                "PPSM:LinLin","PPSM:LinLog","PPSM:xgboost","PPSM:Krls","PPSM:SL",
-                "IPPW:LinLin","IPPW:LinLog","IPPW:xgboost","IPPW:Krls","IPPW:SL"
+estimators <- c("Diff-in-means","Coeff:Linear","Coeff:Linear:Lin",
+                "Bal:PSM:Logit","Bal:PSM:Lasso","Bal:PSM:xgboost",
+                "Bal:PSM:Krls","Bal:PSM:SL",
+                "Bal:IPW:Logit","Bal:IPW:Lasso","Bal:IPW:xgboost",
+                "Bal:IPW:Krls","Bal:IPW:SL",
+                "Bal:Ebal:raw", "Bal:Ebal:expand",
+                "Bal:Y0:Lin","Bal:Y0:Lasso","Bal:Y0:xgboost",
+                "Bal:Y0:Krls","Bal:Y0:SL",
+                "G-comp:single:Lasso","G-comp:single:xgboost","G-comp:single:earth",
+                "G-comp:single:Krls","G-comp:single:SL",
+                "G-comp:cross:Lasso","G-comp:cross:xgboost","G-comp:cross:earth",
+                "G-comp:cross:Krls","G-comp:cross:SL",
+                "DR:AIPW:LogLin","DR:AIPW:xgboost","DR:AIPW:grf",
+                "DR:AIPW:Krls","DR:AIPW:SL",
+                "DR:TMLE:LogLin","DR:TMLE:xgboost","DR:TMLE:grf",
+                "DR:TMLE:Krls","DR:TMLE:SL",
+                "DR:DML:LogLin","DR:DML:xgboost",
+                "DR:DML:Krls","DR:DML:SL",
+                "PPSM:LinLin","PPSM:LinLog","PPSM:xgboost",
+                "PPSM:Krls","PPSM:SL",
+                "IPPW:LinLin","IPPW:LinLog","IPPW:xgboost",
+                "IPPW:Krls","IPPW:SL"
 )
-metrics <- c("DGP","Simulation","Estimator","Bias", "RMSE", "MAE", "RESS", "Balance", "Time")
+metrics <- c("DGP","Simulation","Estimator","Bias","RMSE","MAE","RESS","Balance","Time")
 
 # Simulation results storage
-results <- matrix(nrow = n_sims * n_dgps * length(estimators),
-                  ncol = length(metrics)) |> as.data.table()
+results <- matrix(NA_real_,
+                  nrow = n_sims * n_dgps * length(estimators),
+                  ncol = length(metrics)) |> data.table()
 names(results) <- metrics
+results[, ':='(DGP = rep(1:n_dgps, each = n_sims*length(estimators)),
+               Simulation = rep(1:n_sims, each = length(estimators), times = n_dgps),
+               Estimator = rep(estimators, times = n_dgps*n_sims))]
+
 ```
+
+Now setup the full simulation
+
+```{r, warning=FALSE}
+###########################
+### --- SIMULATIONS --- ### 
+###########################
+
+# For reproducibility
+set.seed(24500-03)
+
+# Iterate over different DGPs 
+# (1:20), corresponding to the do-it-yourself part of the competition
+dgp <- 1:n_dgps
+# For now
+dgp <- 1:2
+
+for(i in dgp){
+  
+  # First, capture the list of files in the directory
+  file_list <- 
+    list.files(paste0(path,i), # Switch to the i later
+               pattern = "*.csv", 
+               ignore.case = TRUE,
+               full.names = FALSE)
+  
+  #for(j in 1:length(file_list)){
+  for(j in 1:5){
+    
+    #Keep track of iterations
+    #print(j)
+    #print(paste0(path,i,"/",file_list[j]))
+    
+    # Create data.frame combining covariates and outcomes
+    data <- cbind(
+      data.table::fread(
+        file = paste0(path,i,"/",file_list[j])), covs
+    )[, y := ifelse(z==0, y0, y1)] # Create observed outcome (from switching equation)
+    
+    # Create data.frames for prediction (g-comp)
+    dataZ0 <- copy(data)[,z:=0]
+    dataZ1 <- copy(data)[,z:=1]
+    
+    # Benchmark estimates
+    ate <- mean(data$y1 - data$y0)
+    dim <- mean(data$y[data$z==1]) - mean(data$y[data$z==0])
+    
+    # Store diff-in-means as reference
+    results[Estimator == 'Diff-in-means' & 
+              DGP == i & Simulation == j ,'Bias'] <- dim-ate
+    
+    
+    ##############################
+    ### --- OUTCOME MODELS --- ### 
+    ##############################
+    
+    ###################
+    ### OUTCOME MODELS: Stand-alone
+    ##################
+    # Let's start with the stand alone estimators
+    
+    #################
+    # Lin estimator #
+    #################
+    
+    # Run model
+    coeff_lin <- 
+      estimatr::lm_lin(y~z, covariates = cobalt::f.build("", names(covs)), data = data)
+    
+    # Store results
+    results[Estimator == 'Coeff:Linear:Lin' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      coeff_lin$coefficients["z"]-ate
+    
+    
+    ####################################
+    # Kernel Regularized Least Squares #
+    ####################################
+    
+    # All vars, including treatment, are splines
+    fml <- 
+      as.formula(
+        paste("y ~",
+              paste(paste(c("s(z,"),
+                          paste(names(covs), collapse = ",")),
+                    c(", bs = \"gKRLS\")"))))
+    # Fit the model
+    fit_gKRLS <- mgcv::gam(fml, data = data) 
+    
+    # Store result: Estimated through g-computation
+    results[Estimator == 'G-comp:single:Krls' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      calculate_effects(fit_gKRLS, variables = "z")$est-ate
+    
+    # Now fit separate models for each arm
+    fml2 <- 
+      as.formula(
+        paste("y ~",
+              paste(paste(c("s("), # No Z indicator, just covariates
+                          paste(names(covs), collapse = ",")),
+                    c(", bs = \"gKRLS\")"))))
+    # Fit the model
+    fit_gKRLSy1 <- mgcv::gam(fml2, data = subset(data, z==1)) 
+    fit_gKRLSy0 <- mgcv::gam(fml2, data = subset(data, z==0))
+    
+    # Store result: g-computation
+    results[Estimator == 'G-comp:cross:Krls' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      (mean(predict.gam(fit_gKRLSy1, newdata = dataZ1[data$z==0,]))-
+         mean(predict.gam(fit_gKRLSy0, newdata = dataZ0[data$z==1])))-ate
+    
+    
+    ###################
+    ### OUTCOME MODELS: SuperLearner
+    ##################
+    # Now move into the SL framework, combining multiple estimators
+    
+    #########
+    # TASKS: Specify the tasks to be completed by the SuperLearner
+    #########
+    # For the SuperLearner, first define the tasks (common across iterations and DGPs)
+    # Then train the models in each iteration
+    
+    # Single regression models (predict Y using covariates)
+    task_y <- sl3_Task$new(
+      data = data,
+      outcome = "y",
+      outcome_type = "continuous",
+      covariates = c("z", names(covs)))
+    
+    # Separate regression models (predict Y0, Y1 using covariates)
+    task_y0 <- sl3_Task$new(
+      data = subset(data, z == 0),
+      outcome = "y",
+      outcome_type = "continuous",
+      covariates = names(covs))
+    
+    task_y1 <- sl3_Task$new(
+      data = subset(data, z == 1),
+      outcome = "y",
+      outcome_type = "continuous",
+      covariates = names(covs))
+    
+    # PO imputation tasks (for single model, with Z included)
+    task_y0hat <- sl3_Task$new(
+      data = dataZ0,
+      covariates = c("z", names(covs)))  
+    
+    task_y1hat <- sl3_Task$new(
+      data = dataZ1,
+      covariates = c("z", names(covs)))  
+    
+    # PO imputation tasks (for cross-fitted models)
+    task_yxhat <- sl3_Task$new(
+      data = data,
+      covariates = names(covs))  
+    
+    ######################
+    # Instantiate learners to be used
+    ######################
+    
+    # Mean model
+    lrn_mean <- Lrnr_mean$new()
+    
+    # Unregularized linear model, main terms
+    lrn_glm <- Lrnr_glm$new()
+    
+    # Regularized regression (lasso, elastic net, and ridge)
+    lrn_lasso <- Lrnr_glmnet$new(alpha = 0)
+    lrn_en025 <- Lrnr_glmnet$new(alpha = 0.25)
+    lrn_en050 <- Lrnr_glmnet$new(alpha = 0.5)
+    lrn_en075 <- Lrnr_glmnet$new(alpha = 0.75)
+    lrn_ridge <- Lrnr_glmnet$new(alpha = 1)
+    
+    # Additional, more flexible learners
+    lrn_pspl <- Lrnr_polspline$new() # polynomial splines
+    lrn_earth <- Lrnr_earth$new() # multivariate adaptive regression splines
+    # highly adaptive lasso (very slow! Take out)
+    #lrn_hal <- Lrnr_hal9001$new() 
+    
+    # Tree-based methods
+    lrn_ranger <- Lrnr_ranger$new()
+    lrn_xgb <- Lrnr_xgboost$new()
+    
+    # Add some extra learners
+    lrn_gam <- Lrnr_gam$new()
+    lrn_bayesglm <- Lrnr_bayesglm$new()
+    
+    # Not working insider SL (Take out)
+    #lrn_krls <- Lrnr_gam$new(fml1) 
+    #lrn_krls2 <- Lrnr_gam$new(fml2) 
+    #lrn_grf <- Lrnr_grf$new() 
+    
+    ########################
+    # Create learners stack
+    ########################
+    
+    stack <- Stack$new(
+      "mean" = lrn_mean, "glm" = lrn_glm, 
+      "lasso" = lrn_lasso, "ridge" = lrn_ridge,
+      "en025" = lrn_en025, "en050" = lrn_en050, "en075" = lrn_en075, 
+      "polspline" = lrn_pspl, "earth" = lrn_earth, 
+      "ranger" = lrn_ranger, "xgboost" = lrn_xgb,
+      "gam" = lrn_gam, "bglm" = lrn_bayesglm
+    )
+    
+    #####################
+    # Instantiate the meta-learners
+    #####################
+    
+    # Non-negative least squares
+    sl <- Lrnr_sl$new(learners = stack,
+                      keep_extra = TRUE,
+                      metalearner = Lrnr_nnls$new())
+    
+    #####################
+    # Training the stack and meta-learner
+    #####################
+    
+    # First: single model for the outcome
+    start_time <- proc.time()
+    
+    sl_y <- sl$train(task = task_y)
+    
+    runtime <- proc.time() - start_time
+    runtime
+    
+    # Then: cross-models for the outcome
+    
+    # For the treated
+    start_time <- proc.time()
+    sl_y1 <- sl$train(task = task_y1)
+    runtime <- proc.time() - start_time
+    runtime
+    
+    # For the controls
+    start_time <- proc.time()
+    sl_y0 <- sl$train(task = task_y0)
+    runtime <- proc.time() - start_time
+    runtime
+    
+    # Finally: obtaining predictions, g-computation
+    # Both from the SL and also single learners inside the stack
+    
+    # Linear model, main terms
+    results[Estimator == 'Coeff:Linear' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      sl_y$learner_fits$glm$coefficients["z"]-ate
+    
+    
+    results[Estimator == 'G-comp:single:SL' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      (mean(predict.gam(fit_gKRLS, newdata = dataZ1))-
+         mean(predict.gam(fit_gKRLS, newdata = dataZ0)))-ate
+    
+    yhat_sl <- sl_fit$predcit(task = task_y) # General SL predictions
+    yhat_lasso <- sl_fit$learner_fits$Lrnr_glmnet_NULL_deviance_10_0_100_TRUE_FALSE$predict()
+    
+    ################################
+    ### --- TREATMENT MODELS --- ### 
+    ################################
+    # Now let's focus in propensity score estimation
+    
+    # Task: Propensity score estimation (predict treatment given covariates)
+    task_ps <- sl3_Task$new(
+      data = data,
+      outcome = "z",
+      outcome_type = "binomial",
+      covariates = names(covs)
+    )
+    
+    
+    ####################################
+    ### --- AUGMENTED ESTIMATORS --- ### 
+    ####################################
+    
+    # Generalized random forest : causal forest
+    grf <- grf::causal_forest(X = model.matrix(~ 0 + ., covs), 
+                              Y = data$y, W = data$z, num.trees = 4000)
+    aipw_grf <- grf::average_treatment_effect(grf, target.sample = "all", method = "AIPW")
+    tmle_grf <- grf::average_treatment_effect(grf, target.sample = "all", method = "TMLE")
+    
+    # Store results: AIPW and TMLE
+    results[Estimator == 'DR:AIPW:grf' & 
+              DGP == i & Simulation == j ,'Bias'] <- aipw_grf["estimate"]-ate
+    
+    results[Estimator == 'DR:TMLE:grf' & 
+              DGP == i & Simulation == j ,'Bias'] <- tmle_grf["estimate"]-ate
+    
+    
+    
+    
+    
+    ###########################
+    ##### TRAINING MODELS #####
+    ###########################
+    
+    #sl_fit$learner_fits$glm$coefficients["z"]
+    
+    
+  } # End iterations over realizations
+  
+} # End iterations over DGPs
+
+```
+
 
 We then specify the prediction tasks that are going to be used by the SuperLearner (`sl3` framework), so we can train the models across simulations.
 
-```{r}
+```{r, eval=FALSE}
+library(ggplot2)
+results |> dplyr::filter(!is.na(Bias)) |> 
+  ggplot(aes(y=Estimator, x=Bias)) +
+  geom_boxplot() +
+  geom_vline(xintercept = 0, color = "red", linetype = "dashed")+
+  theme_bw()
+
+
+
+
 #########
 # TASKS: Specify the tasks to be completed by the SuperLearner
 #########
@@ -119,12 +458,12 @@ task_y1 <- sl3_Task$new(
 
 # PO imputation tasks (for single model, with Z included)
 task_y0hat <- sl3_Task$new(
-  data = data[,z:=0],
+  data = dataZ0,
   covariates = c("z", names(covs))
 )  
 
 task_y1hat <- sl3_Task$new(
-  data = data[,z:=1],
+  data = dataZ1,
   covariates = c("z", names(covs))
 )  
 
@@ -171,221 +510,177 @@ for(i in dgp){
   
   # Combine the list into a single data frame
   data <- data.table::rbindlist(data)
+  
+  
+}  
+
 ```
-  
-  
+
 ### Building blocks
-  
+
 ```{r}
-  # Estimate the models to later compute treatment effects: 
-  # Propensity scores and outcome models
-  
-  # First, combine outcome and covs in a single data
-  data <- cbind(outcomes, covs)
-  data <- data |> dplyr::mutate(y = ifelse(z==0, y0, y1))
-  
-  # Then, benchmark estimates
-  ate <- mean(data$y1 - data$y0)
-  dim <- mean(data$y[data$z==1]) - mean(data$y[data$z==0])
-  #data$z <- as.factor(data$z)
-  
-  # Then, for the SuperLearner, instante the models to be used
-  
-  ######################
-  # Instantiate learners to be used
-  ######################
-  
-  # Mean model
-  lrn_mean <- Lrnr_mean$new()
-  
-  # Unregularized linear model, main terms
-  lrn_glm <- Lrnr_glm$new()
-  
-  # Regularized regression (lasso, elastic net, and ridge)
-  lrn_lasso <- Lrnr_glmnet$new(alpha = 0)
-  lrn_en025 <- Lrnr_glmnet$new(alpha = 0.25)
-  lrn_en050 <- Lrnr_glmnet$new(alpha = 0.5)
-  lrn_en075 <- Lrnr_glmnet$new(alpha = 0.75)
-  lrn_ridge <- Lrnr_glmnet$new(alpha = 1)
-  
-  # Additional, more flexible learners
-  lrn_pspl <- Lrnr_polspline$new() # polynomial splines
-  lrn_earth <- Lrnr_earth$new() # multivariate adaptive regression splines
-  #lrn_hal <- Lrnr_hal9001$new() # highly adaptive lasso (very slow!)
-  
-  # Tree-based methods
-  lrn_ranger <- Lrnr_ranger$new()
-  lrn_xgb <- Lrnr_xgboost$new()
-  #lrn_grf <- Lrnr_grf$new() # makes the SL fail (?)
-  
-  # Add some extra learners
-  lrn_gam <- Lrnr_gam$new()
-  lrn_bayesglm <- Lrnr_bayesglm$new()
-  
-  # Input formula for the krls regression
-  # All vars, including treatment, are splines
-    fml <- 
-    as.formula(
-      paste("y ~",
-            paste(paste(c("s(z,"),
-                        paste(names(covs), collapse = ",")),
-                  c(", bs = \"gKRLS\")"))))
-    lrn_krls <- Lrnr_gam$new(fml)
-    lrn_krls2 <- Lrnr_gam$new(fml2)
-  
-  ########################
-  # Create learners stack
-  ########################
-  
-  stack <- Stack$new(
-    "mean" = lrn_mean, "glm" = lrn_glm, 
-    "lasso" = lrn_lasso, "ridge" = lrn_ridge,
-    "en025" = lrn_en025, "en050" = lrn_en050, "en075" = lrn_en075, 
-    "polspline" = lrn_pspl, "earth" = lrn_earth, 
-    "ranger" = lrn_ranger, "xgboost" = lrn_xgb,
-    "gam" = lrn_gam, "bglm" = lrn_bayesglm#, "krls" = lrn_krls
-  )
-  
-  #####################
-  # Instantiate the meta-learners
-  #####################
-  
-  # Non-negative least squares
-  sl <- Lrnr_sl$new(learners = stack,
-                    keep_extra = TRUE,
-                    metalearner = Lrnr_nnls$new()
-  )
-  
-  ######################
-  ## Propensity score ##
-  ######################
-  
-  # Estimators outside the SL: lin, grf, kernel(?)
-  
-  # KRLS pending until I figure this out
-  # Lin not sure it makes sense for pscore
-  
+# Estimate the models to later compute treatment effects: 
+# Propensity scores and outcome models
 
-  
-  # Train learners
+# First, combine outcome and covs in a single data
+data <- cbind(outcomes, covs)
+data <- data |> dplyr::mutate(y = ifelse(z==0, y0, y1))
 
-  # Logistic regression
-  
-  ps_lm <- ()
-  
-  # LASSO
-  
-  ps_lasso <- ()
-  
-  # Random forest
-  
-  ps_grf <- ()
-  
-  # Kernel regression
-  
-  ps_krls <- ()
+# Then, benchmark estimates
+ate <- mean(data$y1 - data$y0)
+dim <- mean(data$y[data$z==1]) - mean(data$y[data$z==0])
 
-  
-  
-  
-  
-  
+# Then, for the SuperLearner, instante the models to be used
 
-  # Train (test time for 1 iteration)
-  
-  set.seed(24500-03)
-  start_time <- proc.time()
-  
-  #sl_fit <- sl$train(task = task_y)
-  krls_fit <- lrn_krls$train(task = task_y)
-  
-  runtime <- proc.time() - start_time
-  runtime
-  
-  set.seed(24500-03)
-  start_time <- proc.time()
-  
-  #sl_fit <- sl$train(task = task_y)
-  krls2_fit <- lrn_krls2$train(task = task_y)
-  
-  runtime <- proc.time() - start_time
-  runtime
-  
-  # Obtaining predictions from the stack and SL
-  
-  yhat_sl <- sl_fit$predcit(task = task_y) # General SL predictions
-  yhat_lasso <- sl_fit$learner_fits$Lrnr_glmnet_NULL_deviance_10_0_100_TRUE_FALSE$predict()
-  
-  
-  ####################
-  ## Outcome models ##
-  ####################
-  
-  # Linear regression
-  
-  y0_lm <- ()
-  y1_lm <- ()
-  
-  y0_lin <- ()
-  y1_lin <- ()
-  
-  # LASSO
-  
-  y0_lasso
-  y1_lasso
-  
-  # Random forest
-  
-  y0_grf
-  y1_grf
-  
-  # Kernel regression
-  
-  y0_krls
-  y1_krls
-  
-  
-  
-  ##########################
-  ### --- ESTIMATORS --- ###
-  ##########################
-  
-  #############################
-  ## Regression Coefficients ##
-  #############################
-  
-  ###################
-  ## G-Computation ##
-  ###################
-  
-  ##############
-  ## Matching ##
-  ##############
-  
-  ###############
-  ## Weighting ##
-  ###############
-  
-  ###########################
-  ## Augmented  estimators ##
-  ###########################
-  
-  # Augmented-IPW
-  
-  # TMLE
-  
-  # DML
-  
-  #################################
-  ## Prognostic Propensity score ##
-  #################################
-  
-  # PPS-Matching (logit/lasso/forest/krls)
-  
-  # PPS-Weighting (logit/lasso/forest/krls)
-  
-  # Y0-weighting (logit/lasso/forest/krls)
-  
+######################
+# Instantiate learners to be used
+######################
+
+# Mean model
+lrn_mean <- Lrnr_mean$new()
+
+# Unregularized linear model, main terms
+lrn_glm <- Lrnr_glm$new()
+
+# Regularized regression (lasso, elastic net, and ridge)
+lrn_lasso <- Lrnr_glmnet$new(alpha = 0)
+lrn_en025 <- Lrnr_glmnet$new(alpha = 0.25)
+lrn_en050 <- Lrnr_glmnet$new(alpha = 0.5)
+lrn_en075 <- Lrnr_glmnet$new(alpha = 0.75)
+lrn_ridge <- Lrnr_glmnet$new(alpha = 1)
+
+# Additional, more flexible learners
+lrn_pspl <- Lrnr_polspline$new() # polynomial splines
+lrn_earth <- Lrnr_earth$new() # multivariate adaptive regression splines
+#lrn_hal <- Lrnr_hal9001$new() # highly adaptive lasso (very slow!)
+
+# Tree-based methods
+lrn_ranger <- Lrnr_ranger$new()
+lrn_xgb <- Lrnr_xgboost$new()
+#lrn_grf <- Lrnr_grf$new() # Not working insider SL
+
+# Add some extra learners
+lrn_gam <- Lrnr_gam$new()
+lrn_bayesglm <- Lrnr_bayesglm$new()
+
+#lrn_krls <- Lrnr_gam$new(fml1) # Not working inside SL
+#lrn_krls2 <- Lrnr_gam$new(fml2) # Not working inside SL
+
+########################
+# Create learners stack
+########################
+
+stack <- Stack$new(
+  "mean" = lrn_mean, "glm" = lrn_glm, 
+  "lasso" = lrn_lasso, "ridge" = lrn_ridge,
+  "en025" = lrn_en025, "en050" = lrn_en050, "en075" = lrn_en075, 
+  "polspline" = lrn_pspl, "earth" = lrn_earth, 
+  "ranger" = lrn_ranger, "xgboost" = lrn_xgb,
+  "gam" = lrn_gam, "bglm" = lrn_bayesglm
+)
+
+#####################
+# Instantiate the meta-learners
+#####################
+
+# Non-negative least squares
+sl <- Lrnr_sl$new(learners = stack,
+                  keep_extra = TRUE,
+                  metalearner = Lrnr_nnls$new()
+)
+
+######################
+## Propensity score ##
+######################
+
+# Estimators outside the SL: lin, grf, kernel(?)
+
+# KRLS pending until I figure this out
+# Lin not sure it makes sense for pscore
+
+set.seed(24500-03)
+start_time <- proc.time()
+
+sl_fit <- sl$train(task = task_y)
+
+runtime <- proc.time() - start_time
+runtime
+
+# Obtaining predictions from the stack and SL
+
+yhat_sl <- sl_fit$predcit(task = task_y) # General SL predictions
+yhat_lasso <- sl_fit$learner_fits$Lrnr_glmnet_NULL_deviance_10_0_100_TRUE_FALSE$predict()
+
+
+####################
+## Outcome models ##
+####################
+
+# Linear regression
+
+y0_lm <- ()
+y1_lm <- ()
+
+y0_lin <- ()
+y1_lin <- ()
+
+# LASSO
+
+y0_lasso
+y1_lasso
+
+# Random forest
+
+y0_grf
+y1_grf
+
+# Kernel regression
+
+y0_krls
+y1_krls
+
+
+
+##########################
+### --- ESTIMATORS --- ###
+##########################
+
+#############################
+## Regression Coefficients ##
+#############################
+
+###################
+## G-Computation ##
+###################
+
+##############
+## Matching ##
+##############
+
+###############
+## Weighting ##
+###############
+
+###########################
+## Augmented  estimators ##
+###########################
+
+# Augmented-IPW
+
+# TMLE
+
+# DML
+
+#################################
+## Prognostic Propensity score ##
+#################################
+
+# PPS-Matching (logit/lasso/forest/krls)
+
+# PPS-Weighting (logit/lasso/forest/krls)
+
+# Y0-weighting (logit/lasso/forest/krls)
+
 }
 ```
 
@@ -415,6 +710,11 @@ caca
 # 2) Prognostic Propensity Score (E(D|Y0)) Balance
 # 3) Prognostic 
 
+
+fit_gKRLS1 <- mgcv::gam(fml1, data = data)
+calculate_effects(fit_gKRLS1, variables = "z")
+fit_gKRLS2 <- mgcv::gam(fml2, data = data)
+calculate_effects(fit_gKRLS2, variables = "z")
 
 # DR: Generalized random forest : causal forest
 grf <- causal_forest(X = data[covs], Y = data$y, W = data$z)
