@@ -244,15 +244,18 @@ for(i in dgp){
     # PO imputation tasks (for single model, with Z included)
     task_y0hat <- sl3_Task$new(
       data = dataZ0,
+      outcome = "y",
       covariates = c("z", names(covs)))  
     
     task_y1hat <- sl3_Task$new(
       data = dataZ1,
+      outcome = "y",
       covariates = c("z", names(covs)))  
     
     # PO imputation tasks (for cross-fitted models)
     task_yxhat <- sl3_Task$new(
       data = data,
+      outcome = "y",
       covariates = names(covs))  
     
     ######################
@@ -347,11 +350,33 @@ for(i in dgp){
               DGP == i & Simulation == j ,'Bias'] <- 
       sl_y$learner_fits$glm$coefficients["z"]-ate
     
+    # Predictions from SL: single model
+    y1hat_sl <- sl_y$predict(task = task_y1hat)
+    y0hat_sl <- sl_y$predict(task = task_y0hat)
     
     results[Estimator == 'G-comp:single:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      (mean(predict.gam(fit_gKRLS, newdata = dataZ1))-
-         mean(predict.gam(fit_gKRLS, newdata = dataZ0)))-ate
+      mean(y1hat_sl - y0hat_sl)-ate
+    
+    # Predictions for all obs
+    mean(y1hat_sl - y0hat_sl)
+    # Prediction for the missing PO only
+    y1hat_sl_imp <- ifelse(data$z==1, data$y, y1hat_sl)
+    y0hat_sl_imp <- ifelse(data$z==0, data$y, y0hat_sl)
+    mean(y1hat_sl_imp - y0hat_sl_imp)
+    
+    # Predictions from SL: cross-models (working horribly! Check again)
+    y1xhat_sl <- sl_y1$predict(task = task_yxhat)
+    y0xhat_sl <- sl_y0$predict(task = task_yxhat)
+    
+    # Full sample: incorrect?
+    mean(y1xhat_sl[data$z==0]-y0xhat_sl[data$z==1])
+    # Predictions only in the complement
+    mean(y1xhat_sl[data$z==0])-mean(y0xhat_sl[data$z==1])
+    
+    results[Estimator == 'G-comp:cross:SL' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean(y1hat_sl - y0hat_sl)-ate
     
     yhat_sl <- sl_fit$predcit(task = task_y) # General SL predictions
     yhat_lasso <- sl_fit$learner_fits$Lrnr_glmnet_NULL_deviance_10_0_100_TRUE_FALSE$predict()
