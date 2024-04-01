@@ -40,7 +40,13 @@ We will use the first 20 DGPs (out of 77 different DGPs), corresponding to the "
 
 ### Premilinaries
 
+We first create the container data.frame to store results across simulations.
+
 ```{r}
+##########
+# STORAGE: create the data.frame to save results
+##########
+
 # Create container for the simulation results
 # dim: [n_estimators x n_sims x n_dgps] by [n_metrics]
 
@@ -68,6 +74,69 @@ metrics <- c("DGP","Simulation","Estimator","Bias", "RMSE", "MAE", "RESS", "Bala
 results <- matrix(nrow = n_sims * n_dgps * length(estimators),
                   ncol = length(metrics)) |> as.data.table()
 names(results) <- metrics
+```
+
+We then specify the prediction tasks that are going to be used by the SuperLearner (`sl3` framework), so we can train the models across simulations.
+
+```{r}
+#########
+# TASKS: Specify the tasks to be completed by the SuperLearner
+#########
+
+# For the SuperLearner, first define the tasks (common across iterations and DGPs)
+# Then train the models in each iteration
+
+# Task: Propensity score estimation (predict treatment given covariates)
+task_ps <- sl3_Task$new(
+  data = data,
+  outcome = "z",
+  outcome_type = "binomial",
+  covariates = names(covs)
+)
+
+# Single regression models (predict Y using covariates)
+task_y <- sl3_Task$new(
+  data = data,
+  outcome = "y",
+  outcome_type = "continuous",
+  covariates = c("z", names(covs))
+)
+
+# Separate regression models (predict Y0, Y1 using covariates)
+task_y0 <- sl3_Task$new(
+  data = subset(data, z == 0),
+  outcome = "y",
+  outcome_type = "continuous",
+  covariates = names(covs)
+)
+
+task_y1 <- sl3_Task$new(
+  data = subset(data, z == 1),
+  outcome = "y",
+  outcome_type = "continuous",
+  covariates = names(covs)
+)
+
+# PO imputation tasks (for single model, with Z included)
+task_y0hat <- sl3_Task$new(
+  data = data[,z:=0],
+  covariates = c("z", names(covs))
+)  
+
+task_y1hat <- sl3_Task$new(
+  data = data[,z:=1],
+  covariates = c("z", names(covs))
+)  
+
+# PO imputation tasks (for cross-fitted models)
+task_yxhat <- sl3_Task$new(
+  data = data,
+  covariates = names(covs)
+)  
+```
+
+Now we can run the simulations
+```{r, eval=FALSE}
 
 ###########################
 ### --- SIMULATIONS --- ### 
@@ -118,7 +187,7 @@ for(i in dgp){
   # Then, benchmark estimates
   ate <- mean(data$y1 - data$y0)
   dim <- mean(data$y[data$z==1]) - mean(data$y[data$z==0])
-  data$z <- as.factor(data$z)
+  #data$z <- as.factor(data$z)
   
   # Then, for the SuperLearner, instante the models to be used
   
@@ -154,13 +223,15 @@ for(i in dgp){
   lrn_bayesglm <- Lrnr_bayesglm$new()
   
   # Input formula for the krls regression
+  # All vars, including treatment, are splines
     fml <- 
     as.formula(
       paste("y ~",
-            paste(paste(c("s(z +"),
-                        paste(names(covs), collapse = "+")),
+            paste(paste(c("s(z,"),
+                        paste(names(covs), collapse = ",")),
                   c(", bs = \"gKRLS\")"))))
     lrn_krls <- Lrnr_gam$new(fml)
+    lrn_krls2 <- Lrnr_gam$new(fml2)
   
   ########################
   # Create learners stack
@@ -172,7 +243,7 @@ for(i in dgp){
     "en025" = lrn_en025, "en050" = lrn_en050, "en075" = lrn_en075, 
     "polspline" = lrn_pspl, "earth" = lrn_earth, 
     "ranger" = lrn_ranger, "xgboost" = lrn_xgb,
-    "gam" = lrn_gam, "bglm" = lrn_bayesglm, "krls" = lrn_krls
+    "gam" = lrn_gam, "bglm" = lrn_bayesglm#, "krls" = lrn_krls
   )
   
   #####################
@@ -189,67 +260,15 @@ for(i in dgp){
   ## Propensity score ##
   ######################
   
-  # Estimators outside the SL: lin, grf, kernel
+  # Estimators outside the SL: lin, grf, kernel(?)
   
   # KRLS pending until I figure this out
   # Lin not sure it makes sense for pscore
   
-  
-  
-  # For the SuperLearner, first define the tasks, then train
-  
-  # Task: Propensity score estimation (predict treatment given covariates)
-  task_ps <- sl3_Task$new(
-    data = data,
-    outcome = "z",
-    outcome_type = "binomial",
-    covariates = names(covs)
-  )
-    
-    # Single regression models (predict Y using covariates)
-  task_y <- sl3_Task$new(
-    data = data,
-    outcome = "y",
-    outcome_type = "continuous",
-    covariates = c("z", names(covs))
-  )
-  
-  # Separate regression models (predict Y0, Y1 using covariates)
-  task_y0 <- sl3_Task$new(
-    data = subset(data, z == 0),
-    outcome = "y",
-    outcome_type = "continuous",
-    covariates = names(covs)
-  )
-  
-  task_y1 <- sl3_Task$new(
-    data = subset(data, z == 1),
-    outcome = "y",
-    outcome_type = "continuous",
-    covariates = names(covs)
-  )
-  
-  # PO imputation tasks  
-  task_y0hat <- sl3_Task$new(
-    data = data[,z:=0],
-    covariates = 
-  )  
-    
+
   
   # Train learners
-  fit_gKRLS <- mgcv::gam(fml, data = data)
-  fit_gKRLS
-  calculate_effects(fit_gKRLS, variables = "z")
-  
-  set.seed(24500-03)
-  start_time <- proc.time()
-  
-  sl_y <- sl$train(task = task_y)
-  #krls_y <- lrn_krls$train(task = task_y)
-  
-  runtime <- proc.time() - start_time
-  runtime
-  
+
   # Logistic regression
   
   ps_lm <- ()
@@ -271,14 +290,23 @@ for(i in dgp){
   
   
   
-  
+
   # Train (test time for 1 iteration)
   
   set.seed(24500-03)
   start_time <- proc.time()
   
-  sl_fit <- sl$train(task = task_y)
-  #stack_fit <- stack$train(task = task_y)
+  #sl_fit <- sl$train(task = task_y)
+  krls_fit <- lrn_krls$train(task = task_y)
+  
+  runtime <- proc.time() - start_time
+  runtime
+  
+  set.seed(24500-03)
+  start_time <- proc.time()
+  
+  #sl_fit <- sl$train(task = task_y)
+  krls2_fit <- lrn_krls2$train(task = task_y)
   
   runtime <- proc.time() - start_time
   runtime
