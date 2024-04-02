@@ -63,28 +63,28 @@ n_sims <- 100
 n_dgps <- 20
 
 # Define estimators and metrics to be used
-estimators <- c("Diff-in-means","Coeff:Linear","Coeff:Linear:Lin",
-                "Bal:PSM:Logit","Bal:PSM:Lasso","Bal:PSM:xgboost",
-                "Bal:PSM:Krls","Bal:PSM:SL",
-                "Bal:IPW:Logit","Bal:IPW:Lasso","Bal:IPW:xgboost",
-                "Bal:IPW:Krls","Bal:IPW:SL",
-                "Bal:Ebal:raw", "Bal:Ebal:expand",
-                "Bal:Y0:Lin","Bal:Y0:Lasso","Bal:Y0:xgboost",
-                "Bal:Y0:Krls","Bal:Y0:SL",
+estimators <- c("Diff-in-means","Coeff:Linear","Coeff:Linear:Lin","Coeff:Lasso",
                 "G-comp:single:Lasso","G-comp:single:xgboost","G-comp:single:earth",
                 "G-comp:single:Krls","G-comp:single:SL",
                 "G-comp:cross:Lasso","G-comp:cross:xgboost","G-comp:cross:earth",
                 "G-comp:cross:Krls","G-comp:cross:SL",
+                "Bal:PSM:Logit","Bal:PSM:Lasso","Bal:PSM:xgboost",
+                "Bal:PSM:earth","Bal:PSM:Krls","Bal:PSM:SL",
+                "Bal:IPW:Logit","Bal:IPW:Lasso","Bal:IPW:xgboost",
+                "Bal:IPW:earth","Bal:IPW:Krls","Bal:IPW:SL",
+                "Bal:Ebal:raw", "Bal:Ebal:expand",
+                "Bal:Y0:Lin","Bal:Y0:Lasso","Bal:Y0:xgboost",
+                "Bal:Y0:earth","Bal:Y0:Krls","Bal:Y0:SL",
                 "DR:AIPW:LogLin","DR:AIPW:xgboost","DR:AIPW:grf",
-                "DR:AIPW:Krls","DR:AIPW:SL",
+                "DR:AIPW:earth","DR:AIPW:Krls","DR:AIPW:SL",
                 "DR:TMLE:LogLin","DR:TMLE:xgboost","DR:TMLE:grf",
-                "DR:TMLE:Krls","DR:TMLE:SL",
+                "DR:TMLE:earth","DR:TMLE:Krls","DR:TMLE:SL",
                 "DR:DML:LogLin","DR:DML:xgboost",
-                "DR:DML:Krls","DR:DML:SL",
+                "DR:DML:earth","DR:DML:Krls","DR:DML:SL",
                 "PPSM:LinLin","PPSM:LinLog","PPSM:xgboost",
-                "PPSM:Krls","PPSM:SL",
+                "PPSM:earth","PPSM:Krls","PPSM:SL",
                 "IPPW:LinLin","IPPW:LinLog","IPPW:xgboost",
-                "IPPW:Krls","IPPW:SL"
+                "IPPW:earth","IPPW:Krls","IPPW:SL"
 )
 metrics <- c("DGP","Simulation","Estimator","Bias","RMSE","MAE","RESS","Balance","Time")
 
@@ -206,8 +206,8 @@ for(i in dgp){
     # Store result: g-computation
     results[Estimator == 'G-comp:cross:Krls' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      (mean(predict.gam(fit_gKRLSy1, newdata = dataZ1[data$z==0,]))-
-         mean(predict.gam(fit_gKRLSy0, newdata = dataZ0[data$z==1])))-ate
+      (mean(predict.gam(fit_gKRLSy1, newdata = dataZ1))-
+         mean(predict.gam(fit_gKRLSy0, newdata = dataZ0)))-ate
     
     
     ###################
@@ -312,9 +312,19 @@ for(i in dgp){
     #####################
     
     # Non-negative least squares
-    sl <- Lrnr_sl$new(learners = stack,
-                      keep_extra = TRUE,
-                      metalearner = Lrnr_nnls$new())
+    sl_nnls <- Lrnr_sl$new(learners = stack,
+                           metalearner = Lrnr_nnls$new())
+    # Earth
+    sl_earth <- Lrnr_sl$new(learners = stack,
+                            metalearner = Lrnr_earth$new())
+    # xgboost
+    sl_xgb <- Lrnr_sl$new(learners = stack,
+                          metalearner = Lrnr_xgboost$new())
+    
+    # Discrete SL: select the best learner (including SL as candidate)
+    stack_meta <- Stack$new(stack, sl_nnls, sl_earth, sl_xgb)
+    cv_selector <- Lrnr_cv_selector$new(eval_function = loss_squared_error)
+    sl <- Lrnr_sl$new(stack_meta, metalearner = cv_selector)
     
     #####################
     # Training the stack and meta-learner
@@ -322,71 +332,152 @@ for(i in dgp){
     
     # First: single model for the outcome
     start_time <- proc.time()
-    
     sl_y <- sl$train(task = task_y)
-    
     runtime <- proc.time() - start_time
     runtime
     
     # Then: cross-models for the outcome
-    
     # For the treated
     start_time <- proc.time()
     sl_y1 <- sl$train(task = task_y1)
     runtime <- proc.time() - start_time
     runtime
-    
     # For the controls
     start_time <- proc.time()
     sl_y0 <- sl$train(task = task_y0)
     runtime <- proc.time() - start_time
     runtime
     
-    # Finally: obtaining predictions, g-computation
-    # Both from the SL and also single learners inside the stack
+    ### SINGLE MODELS ###
     
     # Linear model, main terms
     results[Estimator == 'Coeff:Linear' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       sl_y$learner_fits$glm$coefficients["z"]-ate
     
-    # Predictions from SL: single model
+    # Lasso, treatment term
+    results[Estimator == 'Coeff:Lasso' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      sl_y$learner_fits$lasso$coefficients[2]-ate
+    
+    # Finally: obtaining predictions, g-computation
+    # Both from the SL and also single learners inside the stack
+    
+    # Lasso, g-comp
+    y1hat_lasso <- sl_y$learner_fits$lasso$predict(task = task_y1hat)
+    y0hat_lasso <- sl_y$learner_fits$lasso$predict(task = task_y0hat)
+    results[Estimator == 'G-comp:single:Lasso' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean(y1hat_lasso - y0hat_lasso)-ate
+    
+    # xgboost
+    y1hat_xgb <- sl_y$learner_fits$xgboost$predict(task = task_y1hat)
+    y0hat_xgb <- sl_y$learner_fits$xgboost$predict(task = task_y0hat)
+    results[Estimator == 'G-comp:single:xgboost' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean(y1hat_xgb - y0hat_xgb)-ate
+    
+    # Earth
+    y1hat_earth <- sl_y$learner_fits$earth$predict(task = task_y1hat)
+    y0hat_earth <- sl_y$learner_fits$earth$predict(task = task_y0hat)
+    results[Estimator == 'G-comp:single:earth' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean(y1hat_earth - y0hat_earth)-ate
+    
+    # SuperLearner
     y1hat_sl <- sl_y$predict(task = task_y1hat)
     y0hat_sl <- sl_y$predict(task = task_y0hat)
-    
     results[Estimator == 'G-comp:single:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       mean(y1hat_sl - y0hat_sl)-ate
     
     # Predictions for all obs
-    mean(y1hat_sl - y0hat_sl)
-    # Prediction for the missing PO only
-    y1hat_sl_imp <- ifelse(data$z==1, data$y, y1hat_sl)
-    y0hat_sl_imp <- ifelse(data$z==0, data$y, y0hat_sl)
-    mean(y1hat_sl_imp - y0hat_sl_imp)
+    #mean(y1hat_sl - y0hat_sl)
+    # Prediction for the missing PO only (Alternative, not used, almost identical)
+    #y1hat_sl_imp <- ifelse(data$z==1, data$y, y1hat_sl)
+    #y0hat_sl_imp <- ifelse(data$z==0, data$y, y0hat_sl)
+    #mean(y1hat_sl_imp - y0hat_sl_imp)
     
-    # Predictions from SL: cross-models (working horribly! Check again)
+    ### CROSS MODELS ###
+    
+    # Lasso, g-comp
+    y1xhat_lasso <- sl_y1$learner_fits$lasso$predict(task = task_yxhat)
+    y0xhat_lasso <- sl_y0$learner_fits$lasso$predict(task = task_yxhat)
+    results[Estimator == 'G-comp:cross:Lasso' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean(y1xhat_lasso - y0xhat_lasso)-ate
+    
+    # xgboost
+    y1xhat_xgb <- sl_y1$learner_fits$xgboost$predict(task = task_yxhat)
+    y0xhat_xgb <- sl_y0$learner_fits$xgboost$predict(task = task_yxhat)
+    results[Estimator == 'G-comp:cross:xgboost' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean(y1xhat_xgb - y0xhat_xgb)-ate
+    
+    # Earth
+    y1xhat_earth <- sl_y1$learner_fits$earth$predict(task = task_yxhat)
+    y0xhat_earth <- sl_y0$learner_fits$earth$predict(task = task_yxhat)
+    results[Estimator == 'G-comp:cross:earth' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean(y1xhat_earth - y0xhat_earth)-ate
+    
+    # SuperLearner
     y1xhat_sl <- sl_y1$predict(task = task_yxhat)
     y0xhat_sl <- sl_y0$predict(task = task_yxhat)
-    
-    # Full sample: incorrect?
-    mean(y1xhat_sl[data$z==0]-y0xhat_sl[data$z==1])
-    # Predictions only in the complement
-    mean(y1xhat_sl[data$z==0])-mean(y0xhat_sl[data$z==1])
-    
     results[Estimator == 'G-comp:cross:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      mean(y1hat_sl - y0hat_sl)-ate
+      mean(y1xhat_sl - y0xhat_sl)-ate
     
-    yhat_sl <- sl_fit$predcit(task = task_y) # General SL predictions
-    yhat_lasso <- sl_fit$learner_fits$Lrnr_glmnet_NULL_deviance_10_0_100_TRUE_FALSE$predict()
+    # Full sample, model-based for all
+    # mean(y1xhat_sl)-mean(y0xhat_sl)-ate
+    # Prediction for the missing PO only 
+    # (Alternative, not used, not good not terribly bad)
+    #y1xhat_sl_imp <- ifelse(data$z==1, data$y, y1xhat_sl)
+    #y0xhat_sl_imp <- ifelse(data$z==0, data$y, y0xhat_sl)
+    #mean(y1hat_sl_imp - y0hat_sl_imp)-ate
+    # Predictions only in the complement (very bad!)
+    #mean(y1xhat_sl[data$z==0])-mean(y0xhat_sl[data$z==1])-ate
+    
     
     ################################
     ### --- TREATMENT MODELS --- ### 
     ################################
     # Now let's focus in propensity score estimation
     
-    # Task: Propensity score estimation (predict treatment given covariates)
+    ############################
+    # Linear Probability model # (Potentially misspecified)
+    ############################
+    
+    # Run model and predict probabilities
+    ps_lpm <- lm(cobalt::f.build("z", names(covs)), data = data) |> 
+      predict(type = "response")
+    
+    
+    ####################################
+    # Kernel Regularized Least Squares # (Potentially misspecified)
+    ####################################
+    
+    # All vars are splines
+    fmlps <- 
+      as.formula(
+        paste("z ~",
+              paste(paste(c("s("),
+                          paste(names(covs), collapse = ",")),
+                    c(", bs = \"gKRLS\")"))))
+    # Fit the model (incorrect link function)
+    fit_gKRLS_lpm <- mgcv::gam(fmlps, data = data)
+    # Predicted probabilities
+    ps_krls_lpm <- predict.gam(fit_gKRLS_lpm, type = "response")
+    # Fit the model (appropriate link function)
+    fit_gKRLS_binom <- mgcv::gam(fmlps, family = "binomial", data = data)
+    # Predicted probabilities
+    ps_krls_binom <- predict.gam(fit_gKRLS_binom, type = "response")
+    
+    #################
+    # Super Learner # 
+    #################
+    
+    # New Task: Propensity score estimation (predict treatment given covariates)
     task_ps <- sl3_Task$new(
       data = data,
       outcome = "z",
@@ -394,6 +485,26 @@ for(i in dgp){
       covariates = names(covs)
     )
     
+    # New stack: remove gam (and bayes glm), very slow for this task 
+    stack <- Stack$new(
+      "mean" = lrn_mean, "glm" = lrn_glm, 
+      "lasso" = lrn_lasso, "ridge" = lrn_ridge,
+      "en025" = lrn_en025, "en050" = lrn_en050, "en075" = lrn_en075,
+      "polspline" = lrn_pspl, "earth" = lrn_earth, 
+      "ranger" = lrn_ranger, "xgboost" = lrn_xgb
+    )
+    
+    # Discrete SL: select the best learner (including SL as candidate)
+    stack_meta <- Stack$new(stack, sl_nnls, sl_earth, sl_xgb)
+    cv_selector <- Lrnr_cv_selector$new(eval_function = loss_loglik_binomial)
+    sl <- Lrnr_sl$new(stack_meta, metalearner = cv_selector)
+    
+    # Now train the new task
+    # First: single model for the outcome
+    start_time <- proc.time()
+    sl_ps <- sl$train(task = task_ps)
+    runtime <- proc.time() - start_time
+    runtime
     
     ####################################
     ### --- AUGMENTED ESTIMATORS --- ### 
