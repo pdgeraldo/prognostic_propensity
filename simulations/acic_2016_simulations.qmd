@@ -16,9 +16,9 @@ library(sl3) # SuperLearner
 library(tmle3) # Targeted Learning
 
 # For parallel processing (not working)
-#library(future)
-#ncores <- availableCores()-1
-#plan(multicore, workers = ncores)
+library(future)
+ncores <- availableCores()-1
+plan(multicore, workers = ncores)
 
 # Define path for data
 path <- "/Users/pablogeraldo/Documents/data_cf_all/"
@@ -301,7 +301,7 @@ for(i in dgp){
     stack <- Stack$new(
       "mean" = lrn_mean, "glm" = lrn_glm, 
       "lasso" = lrn_lasso, "ridge" = lrn_ridge,
-      "en025" = lrn_en025, "en050" = lrn_en050, "en075" = lrn_en075, 
+      #"en025" = lrn_en025, "en050" = lrn_en050, "en075" = lrn_en075, 
       "polspline" = lrn_pspl, "earth" = lrn_earth, 
       "ranger" = lrn_ranger, "xgboost" = lrn_xgb,
       "gam" = lrn_gam, "bglm" = lrn_bayesglm
@@ -324,7 +324,8 @@ for(i in dgp){
     # Discrete SL: select the best learner (including SL as candidate)
     stack_meta <- Stack$new(stack, sl_nnls, sl_earth, sl_xgb)
     cv_selector <- Lrnr_cv_selector$new(eval_function = loss_squared_error)
-    sl <- Lrnr_sl$new(stack_meta, metalearner = cv_selector)
+    dsl <- Lrnr_sl$new(stack_meta, metalearner = cv_selector)
+    #esl <- Lrnr_sl$new(stack, metalearner = cv_selector)
     
     #####################
     # Training the stack and meta-learner
@@ -332,7 +333,8 @@ for(i in dgp){
     
     # First: single model for the outcome
     start_time <- proc.time()
-    sl_y <- sl$train(task = task_y)
+    sl_y <- sl_nnls$train(task = task_y)
+    #sl_y <- stack_meta$train(task = task_y)
     runtime <- proc.time() - start_time
     runtime
     
