@@ -4,3 +4,13 @@ format: pdf
 ---
 
 
+```{r}
+library(data.table)
+library(estimatr) # Fast regression and Lin
+library(gKRLS) # Kernel regression
+library(tlverse)
+library(sl3) # SuperLearner
+library(tmle3) # Targeted Learning
+
+```
+
