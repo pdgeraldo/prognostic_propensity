@@ -16,9 +16,9 @@ library(sl3) # SuperLearner
 library(tmle3) # Targeted Learning
 
 # For parallel processing (not working)
-library(future)
-ncores <- availableCores()-1
-plan(multicore, workers = ncores)
+#library(future)
+#ncores <- availableCores()-1
+#plan(multicore, workers = ncores)
 
 # Define path for data
 path <- "/Users/pablogeraldo/Documents/data_cf_all/"
