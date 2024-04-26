@@ -217,10 +217,8 @@ for(i in dgp){
     # V3: combine observed and model based for whole sample (same as v1)
     #mean(c(predict.gam(fit_gKRLSy1, newdata = dataZ1[data$z==0,]),data$y[data$z==1]))-
     #mean(c(predict.gam(fit_gKRLSy0, newdata = dataZ0[data$z==1,]),data$y[data$z==0]))-ate
-    ```
     
     
-    ```{r, warning=FALSE}
     ###################
     ### OUTCOME MODELS: SuperLearner
     ##################
@@ -522,37 +520,58 @@ for(i in dgp){
     ### --- BALANCING ESTIMATORS --- ### 
     ####################################
     
+    "Bal:IPW:Logit","Bal:IPW:Lasso","Bal:IPW:xgboost",
+    "Bal:IPW:earth","Bal:IPW:Krls","Bal:IPW:SL",
+    # IPW: logistic propensity score
     ipw_logit <- weightit(formula = cobalt::f.build("z", names(covs)),
                           ps = sl_ps$learner_fits$glm$predict(),
                           data = data)
+    results[Estimator == 'Bal:IPW:Logit' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(ipw_logit), data = data)$coefficients["z"]-ate
     
+    # IPW: Lasso pscore
     ipw_lasso <- weightit(formula = cobalt::f.build("z", names(covs)),
                           ps = sl_ps$learner_fits$lasso$predict(),
                           data = data)
+    results[Estimator == 'Bal:IPW:Lasso' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(ipw_lasso), data = data)$coefficients["z"]-ate
     
+    # IPW: xgboost
     ipw_xgb <- weightit(formula = cobalt::f.build("z", names(covs)),
-                          ps = sl_ps$learner_fits$lasso$predict(),
-                          data = data)
+                        ps = sl_ps$learner_fits$xgboost$predict(),
+                        data = data)
+    results[Estimator == 'Bal:IPW:xgboost' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(ipw_xgb), data = data)$coefficients["z"]-ate
     
+    # IPW: earth
     ipw_earth <- weightit(formula = cobalt::f.build("z", names(covs)),
                           ps = sl_ps$learner_fits$earth$predict(),
                           data = data)
+    results[Estimator == 'Bal:IPW:earth' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(ipw_earth), data = data)$coefficients["z"]-ate
     
+    # IPW: krls
     ipw_krls <- weightit(formula = cobalt::f.build("z", names(covs)),
-                          ps = ps_krls_binom,
-                          data = data)
+                         ps = ps_krls_binom,
+                         data = data)
+    results[Estimator == 'Bal:IPW:Krls' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(ipw_krls), data = data)$coefficients["z"]-ate
     
+    # IPW: SL 
     ipw_sl <- weightit(formula = cobalt::f.build("z", names(covs)),
-                          ps = sl_ps$predict(),
-                          data = data)
+                       ps = sl_ps$predict(),
+                       data = data)
+    results[Estimator == 'Bal:IPW:SL' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(ipw_sl), data = data)$coefficients["z"]-ate
     
     
     #bal.tab(ipw_lasso)
-    
-    sl_y1$learner_fits$earth$predict(task = task_yxhat)
-    
-    weight_pps <- weightit(t ~ z1+z2+z3+z4, ps = "pps",
-                           data = dgp1)
     
     
     ####################################
@@ -571,16 +590,6 @@ for(i in dgp){
     
     results[Estimator == 'DR:TMLE:grf' & 
               DGP == i & Simulation == j ,'Bias'] <- tmle_grf["estimate"]-ate
-    
-    
-    
-    
-    
-    ###########################
-    ##### TRAINING MODELS #####
-    ###########################
-    
-    #sl_fit$learner_fits$glm$coefficients["z"]
     
     
   } # End iterations over realizations
