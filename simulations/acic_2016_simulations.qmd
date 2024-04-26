@@ -278,11 +278,11 @@ for(i in dgp){
     lrn_glm <- Lrnr_glm$new()
     
     # Regularized regression (lasso, elastic net, and ridge)
-    lrn_lasso <- Lrnr_glmnet$new(alpha = 0)
-    lrn_en025 <- Lrnr_glmnet$new(alpha = 0.25)
+    #lrn_lasso <- Lrnr_glmnet$new(alpha = 0)
+    #lrn_en025 <- Lrnr_glmnet$new(alpha = 0.25)
     lrn_en050 <- Lrnr_glmnet$new(alpha = 0.5)
-    lrn_en075 <- Lrnr_glmnet$new(alpha = 0.75)
-    lrn_ridge <- Lrnr_glmnet$new(alpha = 1)
+    #lrn_en075 <- Lrnr_glmnet$new(alpha = 0.75)
+    #lrn_ridge <- Lrnr_glmnet$new(alpha = 1)
     
     # Additional, more flexible learners
     lrn_pspl <- Lrnr_polspline$new() # polynomial splines
@@ -291,7 +291,7 @@ for(i in dgp){
     #lrn_hal <- Lrnr_hal9001$new() 
     
     # Tree-based methods
-    lrn_ranger <- Lrnr_ranger$new()
+    #lrn_ranger <- Lrnr_ranger$new()
     lrn_xgb <- Lrnr_xgboost$new()
     
     # Add some extra learners
@@ -520,8 +520,6 @@ for(i in dgp){
     ### --- BALANCING ESTIMATORS --- ### 
     ####################################
     
-    "Bal:IPW:Logit","Bal:IPW:Lasso","Bal:IPW:xgboost",
-    "Bal:IPW:earth","Bal:IPW:Krls","Bal:IPW:SL",
     # IPW: logistic propensity score
     ipw_logit <- weightit(formula = cobalt::f.build("z", names(covs)),
                           ps = sl_ps$learner_fits$glm$predict(),
@@ -590,6 +588,12 @@ for(i in dgp){
     
     results[Estimator == 'DR:TMLE:grf' & 
               DGP == i & Simulation == j ,'Bias'] <- tmle_grf["estimate"]-ate
+    
+    
+    #####################################
+    ### --- PROGNOSTIC PROPENSITY --- ### 
+    #####################################
+    
     
     
   } # End iterations over realizations
