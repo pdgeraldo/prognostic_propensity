@@ -184,7 +184,7 @@ for(i in dgp){
     
     # Store predicted values for later use
     y1hat_lin <- predict(coeff_lin, type = response, newdata = dataZ1)
-    y1hat_lin <- predict(coeff_lin, type = response, newdata = dataZ1)
+    y0hat_lin <- predict(coeff_lin, type = response, newdata = dataZ0)
     
     
     ####################################
@@ -465,55 +465,64 @@ for(i in dgp){
     ### --- BALANCING ESTIMATORS --- ### For the predicted Y0
     ####################################
     
+    # Yd balance: Lin
+    bal_ydhat_lin <- weightit(formula = z ~ y1hat_lin + y0hat_lin,
+                              #moments = 3, int = TRUE,
+                              method = "ebal", data = data)
+    results[Estimator == 'Bal:Yd:Lin' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(bal_ydhat_lin), data = data)$coefficients["z"]-ate
+    
     # Yd balance: Lasso
     bal_ydhat_lasso <- weightit(formula = z ~ y1hat_lasso + y0hat_lasso,
-                                method = "ebal", data = data,
-                                moments = 3, int = TRUE)
+                                #moments = 3, int = TRUE,
+                                method = "ebal", data = data)
     results[Estimator == 'Bal:Yd:Lasso' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(bal_ydhat_lasso), data = data)$coefficients["z"]-ate
     
     # Yd balance: xgboost
     bal_ydhat_xgb <- weightit(formula = z ~ y1hat_xgb + y0hat_xgb,
-                              method = "ebal", data = data,
-                              moments = 3, int = TRUE)
+                              #moments = 3, int = TRUE,
+                              method = "ebal", data = data)
     results[Estimator == 'Bal:Yd:xgboost' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(bal_ydhat_xgb), data = data)$coefficients["z"]-ate
     
     # Yd balance: earth
     bal_ydhat_earth <- weightit(formula = z ~ y1hat_earth + y0hat_earth,
-                              method = "ebal", data = data,
-                              moments = 3, int = TRUE)
+                                #moments = 3, int = TRUE, 
+                                method = "ebal", data = data)
     results[Estimator == 'Bal:Yd:earth' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(bal_ydhat_earth), data = data)$coefficients["z"]-ate
     
     # Yd balance: Krls
     bal_ydhat_krls <- weightit(formula = z ~ y1hat_krls + y0hat_krls,
-                              method = "ebal", data = data,
-                              moments = 3, int = TRUE)
+                               #moments = 3, int = TRUE,
+                               method = "ebal", data = data)
     results[Estimator == 'Bal:Yd:Krls' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(bal_ydhat_krls), data = data)$coefficients["z"]-ate
     
     # Yd balance: SL
     bal_ydhat_sl <- weightit(formula = z ~ y1hat_sl + y0hat_sl,
-                              method = "ebal", data = data,
-                              moments = 3, int = TRUE)
+                             #moments = 3, int = TRUE,
+                             method = "ebal", data = data)
     results[Estimator == 'Bal:Yd:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(bal_ydhat_sl), data = data)$coefficients["z"]-ate
     
     # Yd balance: All
     bal_ydhat_all <- weightit(formula = z ~ 
+                                y1hat_lin + y0hat_lin +
                                 y1hat_lasso + y0hat_lasso +
                                 y1hat_xgb + y0hat_xgb +
                                 y1hat_earth + y0hat_earth +
                                 y1hat_krls + y0hat_krls +
                                 y1hat_sl + y0hat_sl,
-                              method = "ebal", data = data,
-                              moments = 3, int = TRUE)
+                              #moments = 3, int = TRUE,
+                              method = "ebal", data = data)
     results[Estimator == 'Bal:Yd:all' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(bal_ydhat_all), data = data)$coefficients["z"]-ate
@@ -601,7 +610,7 @@ for(i in dgp){
     #summary(test$predict())
     
     ####################################
-    ### --- BALANCING ESTIMATORS --- ### 
+    ### --- BALANCING ESTIMATORS --- ### Inverse probability weighting
     ####################################
     
     # IPW: logistic propensity score
@@ -658,8 +667,24 @@ for(i in dgp){
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(ipw_sl), data = data)$coefficients["z"]-ate
     
+    # Now add two calibration weighting
+    # Entropy balance with the raw covariates (mean balance)
+    # And entropy balance with interactions and higher moments
     
-    #bal.tab(ipw_lasso)
+    # ebal_raw <- weightit(formula = cobalt::f.build("z", names(covs)),
+    #                      method = "ebal", estimand = "ATE",
+    #                      data = data)
+    # results[Estimator == 'Bal:Ebal:raw' & 
+    #           DGP == i & Simulation == j ,'Bias'] <- 
+    #   lm(y ~ z, weights = get.w(ebal_raw), data = data)$coefficients["z"]-ate
+    # 
+    # ebal_expand <- weightit(formula = cobalt::f.build("z", names(covs)),
+    #                         method = "ebal", estimand = "ATE",
+    #                         int = TRUE, moments = 2,
+    #                         data = data)
+    # results[Estimator == 'Bal:Ebal:expand' & 
+    #           DGP == i & Simulation == j ,'Bias'] <- 
+    #   lm(y ~ z, weights = get.w(ebal_expand), data = data)$coefficients["z"]-ate
     
     
     ####################################
