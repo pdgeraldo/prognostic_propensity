@@ -36,10 +36,6 @@ outcomes <- data.table::fread(paste0(path,"1/zymu_13.csv"))
 data <- cbind(outcomes, covs)
 data <- data |> dplyr::mutate(y = ifelse(z==0, y0, y1))
 
-# Then, benchmark estimates
-ate <- mean(data$y1 - data$y0)
-dim <- mean(data$y[data$z==1]) - mean(data$y[data$z==0])
-
 ```
 
 Here we report the performance of the prognostic propensity score in estimating treatment effects according to the simulations in Dorie et al. (2019), corresponding to the 2016 data competition at the American Causal Inference Conference.
@@ -65,7 +61,8 @@ n_sims <- 100
 n_dgps <- 20
 
 # Define estimators and metrics to be used
-estimators <- c("Diff-in-means","Coeff:Linear","Coeff:Linear:Lin","Coeff:Lasso",
+estimators <- c("Diff-in-means",
+                "Coeff:Linear","Coeff:Linear:Lin","Coeff:Lasso",
                 "G-comp:single:Lasso","G-comp:single:xgboost","G-comp:single:earth",
                 "G-comp:single:Krls","G-comp:single:SL",
                 "G-comp:cross:Lasso","G-comp:cross:xgboost","G-comp:cross:earth",
@@ -88,7 +85,8 @@ estimators <- c("Diff-in-means","Coeff:Linear","Coeff:Linear:Lin","Coeff:Lasso",
                 "IPPW:LinLin","IPPW:LinLog","IPPW:xgboost",
                 "IPPW:earth","IPPW:Krls","IPPW:SL"
 )
-metrics <- c("DGP","Simulation","Estimator","Bias","RMSE","MAE","RESS","Balance","Time")
+metrics <- c("DGP","Simulation","ATE","ATT","ATC",
+             "Estimator","Bias","RMSE","MAE","RESS","Balance","Time")
 
 # Simulation results storage
 results <- matrix(NA_real_,
@@ -115,7 +113,7 @@ set.seed(24500-03)
 # (1:20), corresponding to the do-it-yourself part of the competition
 dgp <- 1:n_dgps
 # For now
-dgp <- 1:2
+dgp <- 1
 
 for(i in dgp){
   
@@ -127,7 +125,7 @@ for(i in dgp){
                full.names = FALSE)
   
   #for(j in 1:length(file_list)){
-  for(j in 1:5){
+  for(j in 1:100){
     
     #Keep track of iterations
     #print(j)
@@ -145,7 +143,14 @@ for(i in dgp){
     
     # Benchmark estimates
     ate <- mean(data$y1 - data$y0)
+    att <- mean(data$y1[data$z==1] - data$y0[data$z==1])
+    atc <- mean(data$y1[data$z==0] - data$y0[data$z==0])
     dim <- mean(data$y[data$z==1]) - mean(data$y[data$z==0])
+    
+    # Store the ate, att, and atc for current realization
+    results[DGP == i & Simulation == j ,'ATE'] <- ate
+    results[DGP == i & Simulation == j ,'ATT'] <- att
+    results[DGP == i & Simulation == j ,'ATC'] <- atc
     
     # Store diff-in-means as reference
     results[Estimator == 'Diff-in-means' & 
@@ -278,11 +283,11 @@ for(i in dgp){
     lrn_glm <- Lrnr_glm$new()
     
     # Regularized regression (lasso, elastic net, and ridge)
-    #lrn_lasso <- Lrnr_glmnet$new(alpha = 0)
+    lrn_lasso <- Lrnr_glmnet$new(alpha = 0)
     #lrn_en025 <- Lrnr_glmnet$new(alpha = 0.25)
     lrn_en050 <- Lrnr_glmnet$new(alpha = 0.5)
     #lrn_en075 <- Lrnr_glmnet$new(alpha = 0.75)
-    #lrn_ridge <- Lrnr_glmnet$new(alpha = 1)
+    lrn_ridge <- Lrnr_glmnet$new(alpha = 1)
     
     # Additional, more flexible learners
     lrn_pspl <- Lrnr_polspline$new() # polynomial splines
@@ -309,12 +314,13 @@ for(i in dgp){
     
     stack <- Stack$new(
       "mean" = lrn_mean, "glm" = lrn_glm, 
-      "lasso" = lrn_lasso, "ridge" = lrn_ridge,
-      #"en025" = lrn_en025, "en050" = lrn_en050, "en075" = lrn_en075, 
+      "lasso" = lrn_lasso, "ridge" = lrn_ridge, 
+      "en050" = lrn_en050,
+      #"en025" = lrn_en025, "en075" = lrn_en075, 
       "polspline" = lrn_pspl, "earth" = lrn_earth, 
-      "ranger" = lrn_ranger, "xgboost" = lrn_xgb,
-      "gam" = lrn_gam, "bglm" = lrn_bayesglm
-    )
+      #"ranger" = lrn_ranger, 
+      "xgboost" = lrn_xgb,
+      "gam" = lrn_gam, "bglm" = lrn_bayesglm)
     
     #####################
     # Instantiate the meta-learners
