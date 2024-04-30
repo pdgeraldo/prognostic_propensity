@@ -16,6 +16,8 @@ library(sl3) # SuperLearner
 library(tmle3) # Targeted Learning
 library(cobalt) # To assess covariate balance
 library(WeightIt) # For weighting methods
+library(DoubleML)
+library(ddml)
 
 # For parallel processing (not working)
 #library(future)
@@ -30,11 +32,11 @@ covs <- data.table::fread(paste0(path,"x.csv"),
                           stringsAsFactors = TRUE)
 
 # For now, just for testing, load one iteration of the outcome
-outcomes <- data.table::fread(paste0(path,"1/zymu_13.csv")) 
+#outcomes <- data.table::fread(paste0(path,"1/zymu_13.csv")) 
 
 # First, combine outcome and covs in a single data
-data <- cbind(outcomes, covs)
-data <- data |> dplyr::mutate(y = ifelse(z==0, y0, y1))
+#data <- cbind(outcomes, covs)
+#data <- data |> dplyr::mutate(y = ifelse(z==0, y0, y1))
 ```
 
 Here we report the performance of the prognostic propensity score in estimating treatment effects according to the simulations in Dorie et al. (2019), corresponding to the 2016 data competition at the American Causal Inference Conference.
@@ -73,15 +75,18 @@ estimators <- c("Diff-in-means",
                 "Bal:Ebal:raw", "Bal:Ebal:expand",
                 "Bal:Yd:Lin","Bal:Yd:Lasso","Bal:Yd:xgboost",
                 "Bal:Yd:earth","Bal:Yd:Krls","Bal:Yd:SL","Bal:Yd:all",
-                "DR:AIPW:LogLin","DR:AIPW:xgboost","DR:AIPW:grf",
+                "DR:AIPW:LogLin","DR:AIPW:Lasso",
+                "DR:AIPW:xgboost","DR:AIPW:grf",
                 "DR:AIPW:earth","DR:AIPW:Krls","DR:AIPW:SL",
                 "DR:TMLE:LogLin","DR:TMLE:xgboost","DR:TMLE:grf",
                 "DR:TMLE:earth","DR:TMLE:Krls","DR:TMLE:SL",
                 "DR:DML:LogLin","DR:DML:xgboost",
                 "DR:DML:earth","DR:DML:Krls","DR:DML:SL",
-                "PPSM:LinLin","PPSM:LinLog","PPSM:xgboost",
+                "PPSM:LinLin","PPSM:LinLog",
+                "PPSM:Lasso","PPSM:xgboost",
                 "PPSM:earth","PPSM:Krls","PPSM:SL",
-                "IPPW:LinLin","IPPW:LinLog","IPPW:xgboost",
+                "IPPW:LinLin","IPPW:LinLog",
+                "IPPW:Lasso","IPPW:xgboost",
                 "IPPW:earth","IPPW:Krls","IPPW:SL"
 )
 metrics <- c("DGP","Simulation","ATE","ATT","ATC",
@@ -106,8 +111,8 @@ Now setup the full simulation
 ###########################
 
 # for single test
-i <- 1
-j <- 1
+#i <- 1
+#j <- 1
 
 # For reproducibility
 set.seed(24500-03)
@@ -183,8 +188,8 @@ for(i in dgp){
       coeff_lin$coefficients["z"]-ate
     
     # Store predicted values for later use
-    y1hat_lin <- predict(coeff_lin, type = response, newdata = dataZ1)
-    y0hat_lin <- predict(coeff_lin, type = response, newdata = dataZ0)
+    data$y1hat_lin <- predict(coeff_lin, type = response, newdata = dataZ1)
+    data$y0hat_lin <- predict(coeff_lin, type = response, newdata = dataZ0)
     
     
     ####################################
@@ -206,8 +211,8 @@ for(i in dgp){
               DGP == i & Simulation == j ,'Bias'] <- 
       calculate_effects(fit_gKRLS, variables = "z")$est-ate
     # Now, store the predicted values for later use
-    y1hat_krls <- predict(fit_gKRLS, type = "response", newdata = dataZ1)
-    y0hat_krls <- predict(fit_gKRLS, type = "response", newdata = dataZ0)
+    data$y1hat_krls <- predict(fit_gKRLS, type = "response", newdata = dataZ1)
+    data$y0hat_krls <- predict(fit_gKRLS, type = "response", newdata = dataZ0)
     
     # Now fit separate models for each arm
     fml2 <- 
@@ -395,32 +400,32 @@ for(i in dgp){
     # Both from the SL and also single learners inside the stack
     
     # Lasso, g-comp
-    y1hat_lasso <- sl_y$learner_fits$lasso$predict(task = task_y1hat)
-    y0hat_lasso <- sl_y$learner_fits$lasso$predict(task = task_y0hat)
+    data$y1hat_lasso <- sl_y$learner_fits$lasso$predict(task = task_y1hat)
+    data$y0hat_lasso <- sl_y$learner_fits$lasso$predict(task = task_y0hat)
     results[Estimator == 'G-comp:single:Lasso' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      mean(y1hat_lasso - y0hat_lasso)-ate
+      mean(data$y1hat_lasso - data$y0hat_lasso)-ate
     
     # xgboost
-    y1hat_xgb <- sl_y$learner_fits$xgboost$predict(task = task_y1hat)
-    y0hat_xgb <- sl_y$learner_fits$xgboost$predict(task = task_y0hat)
+    data$y1hat_xgb <- sl_y$learner_fits$xgboost$predict(task = task_y1hat)
+    data$y0hat_xgb <- sl_y$learner_fits$xgboost$predict(task = task_y0hat)
     results[Estimator == 'G-comp:single:xgboost' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      mean(y1hat_xgb - y0hat_xgb)-ate
+      mean(data$y1hat_xgb - data$y0hat_xgb)-ate
     
     # Earth
-    y1hat_earth <- sl_y$learner_fits$earth$predict(task = task_y1hat)
-    y0hat_earth <- sl_y$learner_fits$earth$predict(task = task_y0hat)
+    data$y1hat_earth <- sl_y$learner_fits$earth$predict(task = task_y1hat)
+    data$y0hat_earth <- sl_y$learner_fits$earth$predict(task = task_y0hat)
     results[Estimator == 'G-comp:single:earth' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      mean(y1hat_earth - y0hat_earth)-ate
+      mean(data$y1hat_earth - data$y0hat_earth)-ate
     
     # SuperLearner
-    y1hat_sl <- sl_y$predict(task = task_y1hat)
-    y0hat_sl <- sl_y$predict(task = task_y0hat)
+    data$y1hat_sl <- sl_y$predict(task = task_y1hat)
+    data$y0hat_sl <- sl_y$predict(task = task_y0hat)
     results[Estimator == 'G-comp:single:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      mean(y1hat_sl - y0hat_sl)-ate
+      mean(data$y1hat_sl - data$y0hat_sl)-ate
     
     # Predictions for all obs
     #mean(y1hat_sl - y0hat_sl)
@@ -433,32 +438,32 @@ for(i in dgp){
     ### CROSS MODELS ###
     
     # Lasso, g-comp
-    y1xhat_lasso <- sl_y1$learner_fits$lasso$predict(task = task_yxhat)
-    y0xhat_lasso <- sl_y0$learner_fits$lasso$predict(task = task_yxhat)
+    data$y1xhat_lasso <- sl_y1$learner_fits$lasso$predict(task = task_yxhat)
+    data$y0xhat_lasso <- sl_y0$learner_fits$lasso$predict(task = task_yxhat)
     results[Estimator == 'G-comp:cross:Lasso' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      mean(y1xhat_lasso - y0xhat_lasso)-ate
+      mean(data$y1xhat_lasso - data$y0xhat_lasso)-ate
     
     # xgboost
-    y1xhat_xgb <- sl_y1$learner_fits$xgboost$predict(task = task_yxhat)
-    y0xhat_xgb <- sl_y0$learner_fits$xgboost$predict(task = task_yxhat)
+    data$y0xhat_xgb <- sl_y0$learner_fits$xgboost$predict(task = task_yxhat)
+    data$y1xhat_xgb <- sl_y1$learner_fits$xgboost$predict(task = task_yxhat)
     results[Estimator == 'G-comp:cross:xgboost' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      mean(y1xhat_xgb - y0xhat_xgb)-ate
+      mean(data$y1xhat_xgb - data$y0xhat_xgb)-ate
     
     # Earth
-    y1xhat_earth <- sl_y1$learner_fits$earth$predict(task = task_yxhat)
-    y0xhat_earth <- sl_y0$learner_fits$earth$predict(task = task_yxhat)
+    data$y1xhat_earth <- sl_y1$learner_fits$earth$predict(task = task_yxhat)
+    data$y0xhat_earth <- sl_y0$learner_fits$earth$predict(task = task_yxhat)
     results[Estimator == 'G-comp:cross:earth' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      mean(y1xhat_earth - y0xhat_earth)-ate
+      mean(data$y1xhat_earth - data$y0xhat_earth)-ate
     
     # SuperLearner
-    y1xhat_sl <- sl_y1$predict(task = task_yxhat)
-    y0xhat_sl <- sl_y0$predict(task = task_yxhat)
+    data$y1xhat_sl <- sl_y1$predict(task = task_yxhat)
+    data$y0xhat_sl <- sl_y0$predict(task = task_yxhat)
     results[Estimator == 'G-comp:cross:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      mean(y1xhat_sl - y0xhat_sl)-ate
+      mean(data$y1xhat_sl - data$y0xhat_sl)-ate
     
     
     ####################################
@@ -540,9 +545,8 @@ for(i in dgp){
     ############################
     
     # Run model and predict probabilities
-    ps_lpm <- lm(cobalt::f.build("z", names(covs)), data = data) |> 
+    data$ps_lpm <- lm(cobalt::f.build("z", names(covs)), data = data) |> 
       predict(type = "response")
-    
     
     ####################################
     # Kernel Regularized Least Squares # (Potentially misspecified)
@@ -558,11 +562,11 @@ for(i in dgp){
     # Fit the model (incorrect link function)
     fit_gKRLS_lpm <- mgcv::gam(fmlps, data = data)
     # Predicted probabilities
-    ps_krls_lpm <- predict.gam(fit_gKRLS_lpm, type = "response")
+    data$ps_krls_lpm <- predict.gam(fit_gKRLS_lpm, type = "response")
     # Fit the model (appropriate link function)
     fit_gKRLS_binom <- mgcv::gam(fmlps, family = "binomial", data = data)
     # Predicted probabilities
-    ps_krls_binom <- predict.gam(fit_gKRLS_binom, type = "response")
+    data$ps_krls_binom <- predict.gam(fit_gKRLS_binom, type = "response")
     
     #################
     # Super Learner # 
@@ -614,8 +618,9 @@ for(i in dgp){
     ####################################
     
     # IPW: logistic propensity score
+    data$ps_logit <- sl_ps$learner_fits$glm$predict()
     ipw_logit <- weightit(formula = cobalt::f.build("z", names(covs)),
-                          ps = sl_ps$learner_fits$glm$predict(),
+                          ps = "ps_logit",
                           stabilize = TRUE,
                           data = data)
     results[Estimator == 'Bal:IPW:Logit' & 
@@ -623,8 +628,9 @@ for(i in dgp){
       lm(y ~ z, weights = get.w(ipw_logit), data = data)$coefficients["z"]-ate
     
     # IPW: Lasso pscore
+    data$ps_lasso <- sl_ps$learner_fits$lasso$predict()
     ipw_lasso <- weightit(formula = cobalt::f.build("z", names(covs)),
-                          ps = sl_ps$learner_fits$lasso$predict(),
+                          ps = "ps_lasso",
                           stabilize = TRUE,
                           data = data)
     results[Estimator == 'Bal:IPW:Lasso' & 
@@ -632,8 +638,9 @@ for(i in dgp){
       lm(y ~ z, weights = get.w(ipw_lasso), data = data)$coefficients["z"]-ate
     
     # IPW: xgboost
+    data$ps_xgb <- sl_ps$learner_fits$xgboost$predict()
     ipw_xgb <- weightit(formula = cobalt::f.build("z", names(covs)),
-                        ps = sl_ps$learner_fits$xgboost$predict(),
+                        ps = "ps_xgb",
                         stabilize = TRUE,
                         data = data)
     results[Estimator == 'Bal:IPW:xgboost' & 
@@ -641,8 +648,9 @@ for(i in dgp){
       lm(y ~ z, weights = get.w(ipw_xgb), data = data)$coefficients["z"]-ate
     
     # IPW: earth
+    data$ps_earth <- sl_ps$learner_fits$earth$predict()
     ipw_earth <- weightit(formula = cobalt::f.build("z", names(covs)),
-                          ps = sl_ps$learner_fits$earth$predict(),
+                          ps = "ps_earth",
                           stabilize = TRUE,
                           data = data)
     results[Estimator == 'Bal:IPW:earth' & 
@@ -651,7 +659,7 @@ for(i in dgp){
     
     # IPW: krls
     ipw_krls <- weightit(formula = cobalt::f.build("z", names(covs)),
-                         ps = ps_krls_binom,
+                         ps = "ps_krls_binom",
                          stabilize = TRUE,
                          data = data)
     results[Estimator == 'Bal:IPW:Krls' & 
@@ -659,8 +667,9 @@ for(i in dgp){
       lm(y ~ z, weights = get.w(ipw_krls), data = data)$coefficients["z"]-ate
     
     # IPW: SL 
+    data$ps_sl <- sl_ps$predict()
     ipw_sl <- weightit(formula = cobalt::f.build("z", names(covs)),
-                       ps = sl_ps$predict(),
+                       ps = "ps_sl",
                        stabilize = TRUE,
                        data = data)
     results[Estimator == 'Bal:IPW:SL' & 
@@ -670,6 +679,7 @@ for(i in dgp){
     # Now add two calibration weighting
     # Entropy balance with the raw covariates (mean balance)
     # And entropy balance with interactions and higher moments
+    # Commenting out for now: weird behavior
     
     # ebal_raw <- weightit(formula = cobalt::f.build("z", names(covs)),
     #                      method = "ebal", estimand = "ATE",
@@ -691,6 +701,42 @@ for(i in dgp){
     ### --- AUGMENTED ESTIMATORS --- ### 
     ####################################
     
+    # "DR:AIPW:LogLin"
+    results[Estimator == 'DR:AIPW:LogLin' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean((data$z*(data$y-data$y1hat_lin)/data$ps_logit+data$y1hat_lin)-
+             ((1-data$z)*((data$y-data$y0hat_lin)/(1-data$ps_logit))+data$y0hat_lin))-ate
+    
+    # "DR:AIPW:Lasso"
+    results[Estimator == 'DR:AIPW:Lasso' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean((data$z*(data$y-data$y1hat_lasso)/data$ps_lasso+data$y1hat_lasso)-
+             ((1-data$z)*((data$y-data$y0hat_lasso)/(1-data$ps_lasso))+data$y0hat_lasso))-ate
+    
+    # "DR:AIPW:xgboost"
+    results[Estimator == 'DR:AIPW:xgboost' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean((data$z*(data$y-data$y1hat_xgb)/data$ps_xgb+data$y1hat_xgb)-
+             ((1-data$z)*((data$y-data$y0hat_xgb)/(1-data$ps_xgb))+data$y0hat_xgb))-ate
+    
+    # "DR:AIPW:earth" 
+    results[Estimator == 'DR:AIPW:earth' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean((data$z*(data$y-data$y1hat_earth)/data$ps_earth+data$y1hat_earth)-
+             ((1-data$z)*((data$y-data$y0hat_earth)/(1-data$ps_earth))+data$y0hat_earth))-ate
+    
+    # "DR:AIPW:Krls"
+    results[Estimator == 'DR:AIPW:Krls' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean((data$z*(data$y-data$y1hat_krls)/data$ps_krls_binom+data$y1hat_krls)-
+             ((1-data$z)*((data$y-data$y0hat_krls)/(1-data$ps_krls_binom))+data$y0hat_krls))-ate
+    
+    # "DR:AIPW:SL"
+    results[Estimator == 'DR:AIPW:SL' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean((data$z*(data$y-data$y1hat_sl)/data$ps_sl+data$y1hat_sl)-
+             ((1-data$z)*((data$y-data$y0hat_sl)/(1-data$ps_sl))+data$y0hat_sl))-ate
+    
     # Generalized random forest : causal forest
     grf <- grf::causal_forest(X = model.matrix(~ 0 + ., covs), 
                               Y = data$y, W = data$z, num.trees = 4000)
@@ -700,7 +746,6 @@ for(i in dgp){
     # Store results: AIPW and TMLE
     results[Estimator == 'DR:AIPW:grf' & 
               DGP == i & Simulation == j ,'Bias'] <- aipw_grf["estimate"]-ate
-    
     results[Estimator == 'DR:TMLE:grf' & 
               DGP == i & Simulation == j ,'Bias'] <- tmle_grf["estimate"]-ate
     
@@ -709,10 +754,161 @@ for(i in dgp){
     ### --- PROGNOSTIC PROPENSITY --- ### 
     #####################################
     
+    ############################
+    # Linear Probability model # (Potentially misspecified)
+    ############################
+    
+    # Run model and predict probabilities
+    # For IPPW:LinLin
+    data$pps_lpm <- lm(z ~ y1hat_lin + y0hat_lin, data = data) |> 
+      predict(type = "response")
+    
+    ####################################
+    # Kernel Regularized Least Squares # (Potentially misspecified)
+    ####################################
+    
+    # Fit the model (incorrect link function)
+    fit_gKRLS_lpm <- mgcv::gam(z ~ s(y1hat_krls, y0hat_krls, bs = "gKRLS"), data = data)
+    # Predicted probabilities
+    data$pps_krls_lpm <- predict.gam(fit_gKRLS_lpm, type = "response")
+    # Fit the model (appropriate link function)
+    fit_gKRLS_binom <- mgcv::gam(z ~ s(y1hat_krls, y0hat_krls, bs = "gKRLS"), 
+                                 family = "binomial", data = data)
+    # Predicted probabilities
+    data$pps_krls_binom <- predict.gam(fit_gKRLS_binom, type = "response")
+    
+    #################
+    # Super Learner # Has to run each model separately
+    #################
+    
+    # IPPW:LinLog
+    task_pps <- sl3_Task$new(
+      data = data,
+      outcome = "z",
+      outcome_type = "binomial",
+      covariates = c("y1hat_lin","y0hat_lin")
+    )
+    linlog_pps <- lrn_glm$train(task = task_ps)
+    data$pps_linlog <- linlog_pps$predict()
+    
+    # IPPW:Lasso
+    task_pps <- sl3_Task$new(
+      data = data,
+      outcome = "z",
+      outcome_type = "binomial",
+      covariates = c("y1hat_lasso","y0hat_lasso")
+    )
+    lasso_pps <- lrn_lasso$train(task = task_ps)
+    data$pps_lasso <- lasso_pps$predict()
+    
+    # IPPW:xgboost
+    task_pps <- sl3_Task$new(
+      data = data,
+      outcome = "z",
+      outcome_type = "binomial",
+      covariates = c("y1hat_xgb","y0hat_xgb")
+    )
+    xgb_pps <- lrn_xgb$train(task = task_ps)
+    data$pps_xgb <- xgb_pps$predict()
+    
+    # IPPW:earth
+    task_pps <- sl3_Task$new(
+      data = data,
+      outcome = "z",
+      outcome_type = "binomial",
+      covariates = c("y1hat_earth","y0hat_earth")
+    )
+    earth_pps <- lrn_earth$train(task = task_ps)
+    data$pps_earth <- earth_pps$predict()
+    
+    # IPPW:SL
+    # It has access too all the y1 and y0 hats from the models in SL
+    # Shouldn't this be equal to the SL in general?
+    # No! Because the SL would take zhats, no ydhats!
+    # Also, here feeding a subset of learner's fits: 
+    # lin, krls, xgb, earth
+    task_pps <- sl3_Task$new(
+      data = data,
+      outcome = "z",
+      outcome_type = "binomial",
+      covariates = c("y1hat_lin","y0hat_lin",
+                     "y1hat_lasso","y0hat_lasso",
+                     "y1hat_krls","y0hat_krls",
+                     "y1hat_xgb","y0hat_xgb",
+                     "y1hat_earth","y0hat_earth")
+    )
+    sl_pps <- esl$train(task = task_ps)
+    data$pps_sl <- sl_pps$predict()
     
     
+    ### --- MATCHING VERSION --- ###
+    #"PPSM:LinLin","PPSM:LinLog","PPSM:xgboost",
+    #"PPSM:earth","PPSM:Krls","PPSM:SL",
+    
+    
+    ### --- WEIGHTING VERSION --- ###
+    #"IPPW:LinLin","
+    
+    # IPPW: logistic propensity score
+    ippw_linlog <- weightit(formula = cobalt::f.build("z", names(covs)),
+                            ps = "pps_linlog",
+                            stabilize = TRUE,
+                            data = data)
+    results[Estimator == 'IPPW:LinLog' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(ippw_linlog), data = data)$coefficients["z"]-ate
+    
+    # IPPW: Lasso pscore
+    ippw_lasso <- weightit(formula = cobalt::f.build("z", names(covs)),
+                          ps = "pps_lasso",
+                          stabilize = TRUE,
+                          data = data)
+    results[Estimator == 'IPPW:Lasso' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(ippw_lasso), data = data)$coefficients["z"]-ate
+    
+    # IPPW: xgboost
+    ippw_xgb <- weightit(formula = cobalt::f.build("z", names(covs)),
+                        ps = "pps_xgb",
+                        stabilize = TRUE,
+                        data = data)
+    results[Estimator == 'IPPW:xgboost' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(ippw_xgb), data = data)$coefficients["z"]-ate
+    
+    # IPPW: earth
+    ippw_earth <- weightit(formula = cobalt::f.build("z", names(covs)),
+                          ps = "pps_earth",
+                          stabilize = TRUE,
+                          data = data)
+    results[Estimator == 'IPPW:earth' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(ippw_earth), data = data)$coefficients["z"]-ate
+    
+    # IPW: krls
+    ippw_krls <- weightit(formula = cobalt::f.build("z", names(covs)),
+                         ps = "pps_krls_binom",
+                         stabilize = TRUE,
+                         data = data)
+    results[Estimator == 'IPPW:Krls' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(ippw_krls), data = data)$coefficients["z"]-ate
+    
+    # IPW: SL 
+    ippw_sl <- weightit(formula = cobalt::f.build("z", names(covs)),
+                       ps = "pps_sl",
+                       stabilize = TRUE,
+                       data = data)
+    results[Estimator == 'IPPW:SL' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(ippw_sl), data = data)$coefficients["z"]-ate
+    
+    
+    # Garbage collection at the end of iteration
+    # Clean the workspace for next round
+    gc(verbose = FALSE)
   } # End iterations over realizations
-  
+  print(paste("End iteration",j,"of dgp",i))
 } # End iterations over DGPs
 
 ```
