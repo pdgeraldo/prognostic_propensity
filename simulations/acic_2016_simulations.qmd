@@ -860,45 +860,45 @@ for(i in dgp){
     
     # IPPW: Lasso pscore
     ippw_lasso <- weightit(formula = cobalt::f.build("z", names(covs)),
-                          ps = "pps_lasso",
-                          stabilize = TRUE,
-                          data = data)
+                           ps = "pps_lasso",
+                           stabilize = TRUE,
+                           data = data)
     results[Estimator == 'IPPW:Lasso' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(ippw_lasso), data = data)$coefficients["z"]-ate
     
     # IPPW: xgboost
     ippw_xgb <- weightit(formula = cobalt::f.build("z", names(covs)),
-                        ps = "pps_xgb",
-                        stabilize = TRUE,
-                        data = data)
+                         ps = "pps_xgb",
+                         stabilize = TRUE,
+                         data = data)
     results[Estimator == 'IPPW:xgboost' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(ippw_xgb), data = data)$coefficients["z"]-ate
     
     # IPPW: earth
     ippw_earth <- weightit(formula = cobalt::f.build("z", names(covs)),
-                          ps = "pps_earth",
-                          stabilize = TRUE,
-                          data = data)
+                           ps = "pps_earth",
+                           stabilize = TRUE,
+                           data = data)
     results[Estimator == 'IPPW:earth' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(ippw_earth), data = data)$coefficients["z"]-ate
     
     # IPW: krls
     ippw_krls <- weightit(formula = cobalt::f.build("z", names(covs)),
-                         ps = "pps_krls_binom",
-                         stabilize = TRUE,
-                         data = data)
+                          ps = "pps_krls_binom",
+                          stabilize = TRUE,
+                          data = data)
     results[Estimator == 'IPPW:Krls' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(ippw_krls), data = data)$coefficients["z"]-ate
     
     # IPW: SL 
     ippw_sl <- weightit(formula = cobalt::f.build("z", names(covs)),
-                       ps = "pps_sl",
-                       stabilize = TRUE,
-                       data = data)
+                        ps = "pps_sl",
+                        stabilize = TRUE,
+                        data = data)
     results[Estimator == 'IPPW:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(ippw_sl), data = data)$coefficients["z"]-ate
@@ -916,10 +916,44 @@ for(i in dgp){
 
 ```{r, eval=FALSE}
 library(ggplot2)
-results |> dplyr::filter(!is.na(Bias)) |> 
-  ggplot(aes(y=Estimator, x=Bias)) +
+# Add DML results
+results_dml <- 
+
+results_clean <- results |> 
+  dplyr::filter(!is.na(Bias), Estimator!="Diff-in-means") |> 
+  dplyr::mutate(type = dplyr::case_when(
+    stringr::str_detect(Estimator, "Coeff") ~ "Coefficient",
+    stringr::str_detect(Estimator, "Bal:Yd") ~ "Bal:Yd",
+    stringr::str_detect(Estimator, "IPPW") ~ "IPPW",
+    stringr::str_detect(Estimator, "G-comp") ~ "G-computation",
+    stringr::str_detect(Estimator, "Bal") ~ "Balance",
+    stringr::str_detect(Estimator, "DR") ~ "Doubly Robust",
+    .default = "None"
+  ))
+
+# Bias results
+results_clean |>
+  ggplot(aes(y=Estimator, x=Bias, color = type)) +
   geom_boxplot() +
   geom_vline(xintercept = 0, color = "red", linetype = "dashed")+
+  theme_bw()
+
+# RMSE
+results_clean |> 
+  dplyr::group_by(Estimator) |> 
+  dplyr::reframe(RMSE = sqrt(mean(Bias^2)), type = type) |> 
+  dplyr::arrange(RMSE) |> #print()
+  ggplot(aes(y=Estimator, x=RMSE, color = type)) +
+  geom_point() +
+  theme_bw()
+
+# Bias-RMSE corr
+results |> dplyr::filter(!is.na(Bias)) |> 
+  dplyr::group_by(Estimator) |> 
+  dplyr::summarize(RMSE = sqrt(mean(Bias^2)),
+                   Bias = mean(Bias)) |> 
+  ggplot(aes(x=Bias, y=RMSE)) +
+  geom_point() +
   theme_bw()
 
 ```
