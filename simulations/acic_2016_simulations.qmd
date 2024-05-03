@@ -90,7 +90,8 @@ estimators <- c("Diff-in-means",
                 "IPPW:earth","IPPW:Krls","IPPW:SL"
 )
 metrics <- c("DGP","Simulation","ATE","ATT","ATC",
-             "Estimator","Bias","RMSE","MAE","RESS","Balance","Time")
+             "Estimator","Bias","SE",
+             "RMSE","MAE","RESS","Balance","Time")
 
 # Simulation results storage
 results <- matrix(NA_real_,
@@ -101,6 +102,18 @@ results[, ':='(DGP = rep(1:n_dgps, each = n_sims*length(estimators)),
                Simulation = rep(1:n_sims, each = length(estimators), times = n_dgps),
                Estimator = rep(estimators, times = n_dgps*n_sims))]
 
+# Running times
+model_type <- c("Krls:single","SL:single","Krls:cross","SL:cross",
+                "Krls:ps","SL:ps","Krls:pps","SL:pps",
+                "Bal:SL:ps","Bal:SL:Yd","Bal:SL:pps")
+metrics <- c("DGP","Simulation","algorithm","time")
+runtimes <- matrix(NA_real_, 
+                   nrow = n_sims* n_dgps * length(model_type),
+                   ncol = length(metrics)) |> data.table()
+names(runtimes) <- metrics
+runtimes[, ':='(DGP = rep(1:n_dgps, each = n_sims*length(model_type)),
+                Simulation = rep(1:n_sims, each = length(model_type), times = n_dgps),
+                algorithm = rep(model_type, times = n_dgps*n_sims))]
 ```
 
 Now setup the full simulation
@@ -110,10 +123,6 @@ Now setup the full simulation
 ### --- SIMULATIONS --- ### 
 ###########################
 
-# for single test
-#i <- 1
-#j <- 1
-
 # For reproducibility
 set.seed(24500-03)
 
@@ -121,7 +130,7 @@ set.seed(24500-03)
 # (1:20), corresponding to the do-it-yourself part of the competition
 dgp <- 1:n_dgps
 # For now
-dgp <- 3
+dgp <- 1:5
 
 for(i in dgp){
   
@@ -204,7 +213,10 @@ for(i in dgp){
                           paste(names(covs), collapse = ",")),
                     c(", bs = \"gKRLS\")"))))
     # Fit the model
+    start_time <- proc.time()
     fit_gKRLS <- mgcv::gam(fml, data = data) 
+    runtime <- proc.time() - start_time
+    runtimes["Krls:single","time"] <- runtime[2]
     
     # Store result: Estimated through g-computation
     results[Estimator == 'G-comp:single:Krls' & 
@@ -222,8 +234,11 @@ for(i in dgp){
                           paste(names(covs), collapse = ",")),
                     c(", bs = \"gKRLS\")"))))
     # Fit the model
+    start_time <- proc.time()
     fit_gKRLSy1 <- mgcv::gam(fml2, data = subset(data, z==1)) 
     fit_gKRLSy0 <- mgcv::gam(fml2, data = subset(data, z==0))
+    runtime <- proc.time() - start_time
+    runtimes["Krls:cross","time"] <- runtime[2]
     
     # Store result: g-computation
     results[Estimator == 'G-comp:cross:Krls' & 
@@ -370,19 +385,16 @@ for(i in dgp){
     sl_y <- esl$train(task = task_y)
     # Add here the CV selector later
     runtime <- proc.time() - start_time
-    runtime
+    runtimes["SL:single","time"] <- runtime[2]
     
     # Then: cross-models for the outcome
     # For the treated
     start_time <- proc.time()
     sl_y1 <- esl$train(task = task_y1)
-    runtime <- proc.time() - start_time
-    runtime
     # For the controls
-    start_time <- proc.time()
     sl_y0 <- esl$train(task = task_y0)
     runtime <- proc.time() - start_time
-    runtime
+    runtimes["SL:cross","time"] <- runtime[2]
     
     ### SINGLE MODELS ###
     
@@ -511,9 +523,12 @@ for(i in dgp){
       lm(y ~ z, weights = get.w(bal_ydhat_krls), data = data)$coefficients["z"]-ate
     
     # Yd balance: SL
+    start_time <- proc.time()
     bal_ydhat_sl <- weightit(formula = z ~ y1hat_sl + y0hat_sl,
                              #moments = 3, int = TRUE,
                              method = "ebal", data = data)
+    runtime <- proc.time() - start_time
+    runtimes["Bal:SL:Yd","time"] <- runtime[2]
     results[Estimator == 'Bal:Yd:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(bal_ydhat_sl), data = data)$coefficients["z"]-ate
@@ -564,7 +579,10 @@ for(i in dgp){
     # Predicted probabilities
     data$ps_krls_lpm <- predict.gam(fit_gKRLS_lpm, type = "response")
     # Fit the model (appropriate link function)
+    start_time <- proc.time()
     fit_gKRLS_binom <- mgcv::gam(fmlps, family = "binomial", data = data)
+    runtime <- proc.time() - start_time
+    runtimes["Krls:ps","time"] <- runtime[2]
     # Predicted probabilities
     data$ps_krls_binom <- predict.gam(fit_gKRLS_binom, type = "response")
     
@@ -577,8 +595,7 @@ for(i in dgp){
       data = data,
       outcome = "z",
       outcome_type = "binomial",
-      covariates = names(covs)
-    )
+      covariates = names(covs))
     
     # New stack: remove gam (and bayes glm), very slow for this task 
     stack <- Stack$new(
@@ -588,8 +605,7 @@ for(i in dgp){
       #"en025" = lrn_en025, "en075" = lrn_en075,
       "polspline" = lrn_pspl, "earth" = lrn_earth, 
       #"ranger" = lrn_ranger, 
-      "xgboost" = lrn_xgb
-    )
+      "xgboost" = lrn_xgb)
     # Note: some learners give extreme propensity scores
     # Earth: some exactly zero
     # polspline: some warnings (model size reduced) and zero probs
@@ -608,7 +624,7 @@ for(i in dgp){
     start_time <- proc.time()
     sl_ps <- esl$train(task = task_ps)
     runtime <- proc.time() - start_time
-    runtime
+    runtimes["SL:ps","time"] <- runtime[2]
     
     #test <- lrn_XX$train(task = task_ps)
     #summary(test$predict())
@@ -668,10 +684,13 @@ for(i in dgp){
     
     # IPW: SL 
     data$ps_sl <- sl_ps$predict()
+    start_time <- proc.time()
     ipw_sl <- weightit(formula = cobalt::f.build("z", names(covs)),
                        ps = "ps_sl",
                        stabilize = TRUE,
                        data = data)
+    runtime <- proc.time() - start_time
+    runtimes["Bal:SL:ps","time"] <- runtime[2]
     results[Estimator == 'Bal:IPW:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(ipw_sl), data = data)$coefficients["z"]-ate
@@ -772,8 +791,11 @@ for(i in dgp){
     # Predicted probabilities
     data$pps_krls_lpm <- predict.gam(fit_gKRLS_lpm, type = "response")
     # Fit the model (appropriate link function)
+    start_time <- proc.time()
     fit_gKRLS_binom <- mgcv::gam(z ~ s(y1hat_krls, y0hat_krls, bs = "gKRLS"), 
                                  family = "binomial", data = data)
+    runtime <- proc.time() - start_time
+    runtimes["Krls:pps","time"] <- runtime[2]
     # Predicted probabilities
     data$pps_krls_binom <- predict.gam(fit_gKRLS_binom, type = "response")
     
@@ -788,7 +810,7 @@ for(i in dgp){
       outcome_type = "binomial",
       covariates = c("y1hat_lin","y0hat_lin")
     )
-    linlog_pps <- lrn_glm$train(task = task_ps)
+    linlog_pps <- lrn_glm$train(task = task_pps)
     data$pps_linlog <- linlog_pps$predict()
     
     # IPPW:Lasso
@@ -798,7 +820,7 @@ for(i in dgp){
       outcome_type = "binomial",
       covariates = c("y1hat_lasso","y0hat_lasso")
     )
-    lasso_pps <- lrn_lasso$train(task = task_ps)
+    lasso_pps <- lrn_lasso$train(task = task_pps)
     data$pps_lasso <- lasso_pps$predict()
     
     # IPPW:xgboost
@@ -808,7 +830,7 @@ for(i in dgp){
       outcome_type = "binomial",
       covariates = c("y1hat_xgb","y0hat_xgb"
       ))
-    xgb_pps <- lrn_xgb$train(task = task_ps)
+    xgb_pps <- lrn_xgb$train(task = task_pps)
     data$pps_xgb <- xgb_pps$predict()
     
     # IPPW:earth
@@ -818,11 +840,11 @@ for(i in dgp){
       outcome_type = "binomial",
       covariates = c("y1hat_earth","y0hat_earth")
     )
-    earth_pps <- lrn_earth$train(task = task_ps)
+    earth_pps <- lrn_earth$train(task = task_pps)
     data$pps_earth <- earth_pps$predict()
     
     # IPPW:SL
-    # It has access too all the y1 and y0 hats from the models in SL
+    # It has access to all the y1 and y0 hats from the models in SL
     # Shouldn't this be equal to the SL in general?
     # No! Because the SL would take zhats, no ydhats!
     # Also, here feeding a subset of learner's fits: 
@@ -837,7 +859,10 @@ for(i in dgp){
                      "y1hat_xgb","y0hat_xgb",
                      "y1hat_earth","y0hat_earth")
     )
-    sl_pps <- esl$train(task = task_ps)
+    start_time <- proc.time()
+    sl_pps <- esl$train(task = task_pps)
+    runtime <- proc.time() - start_time
+    runtimes["SL:pps","time"] <- runtime[2]
     data$pps_sl <- sl_pps$predict()
     
     
@@ -895,14 +920,16 @@ for(i in dgp){
       lm(y ~ z, weights = get.w(ippw_krls), data = data)$coefficients["z"]-ate
     
     # IPW: SL 
+    start_time <- proc.time()
     ippw_sl <- weightit(formula = cobalt::f.build("z", names(covs)),
                         ps = "pps_sl",
                         stabilize = TRUE,
                         data = data)
+    runtime <- proc.time() - start_time
+    runtimes["Bal:SL:pps","time"] <- runtime[2]
     results[Estimator == 'IPPW:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(ippw_sl), data = data)$coefficients["z"]-ate
-    
     
     # Garbage collection at the end of iteration
     # Clean the workspace for next round
@@ -911,6 +938,8 @@ for(i in dgp){
   print(paste("End iteration",j,"of dgp",i))
 } # End iterations over DGPs
 
+data.table::fwrite(results, "results_dorie.csv")
+data.table::fwrite(runtimes, "runtimes_dorie.csv")
 ```
 
 
