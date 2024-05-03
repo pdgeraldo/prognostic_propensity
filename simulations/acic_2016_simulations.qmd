@@ -936,10 +936,10 @@ for(i in dgp){
     gc(verbose = FALSE)
   } # End iterations over realizations
   print(paste("End iteration",j,"of dgp",i))
+  data.table::fwrite(results, "results_dorie.csv")
+  data.table::fwrite(runtimes, "runtimes_dorie.csv")
 } # End iterations over DGPs
 
-data.table::fwrite(results, "results_dorie.csv")
-data.table::fwrite(runtimes, "runtimes_dorie.csv")
 ```
 
 
