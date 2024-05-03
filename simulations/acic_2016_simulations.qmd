@@ -216,7 +216,7 @@ for(i in dgp){
     start_time <- proc.time()
     fit_gKRLS <- mgcv::gam(fml, data = data) 
     runtime <- proc.time() - start_time
-    runtimes["Krls:single","time"] <- runtime[2]
+    runtimes[DGP == i & Simulation == j & algorithm == "Krls:single","time"] <- runtime[2]
     
     # Store result: Estimated through g-computation
     results[Estimator == 'G-comp:single:Krls' & 
@@ -238,7 +238,7 @@ for(i in dgp){
     fit_gKRLSy1 <- mgcv::gam(fml2, data = subset(data, z==1)) 
     fit_gKRLSy0 <- mgcv::gam(fml2, data = subset(data, z==0))
     runtime <- proc.time() - start_time
-    runtimes["Krls:cross","time"] <- runtime[2]
+    runtimes[DGP == i & Simulation == j & algorithm == "Krls:cross","time"] <- runtime[2]
     
     # Store result: g-computation
     results[Estimator == 'G-comp:cross:Krls' & 
@@ -385,7 +385,7 @@ for(i in dgp){
     sl_y <- esl$train(task = task_y)
     # Add here the CV selector later
     runtime <- proc.time() - start_time
-    runtimes["SL:single","time"] <- runtime[2]
+    runtimes[DGP == i & Simulation == j & algorithm == "SL:single","time"] <- runtime[2]
     
     # Then: cross-models for the outcome
     # For the treated
@@ -394,7 +394,7 @@ for(i in dgp){
     # For the controls
     sl_y0 <- esl$train(task = task_y0)
     runtime <- proc.time() - start_time
-    runtimes["SL:cross","time"] <- runtime[2]
+    runtimes[DGP == i & Simulation == j & algorithm == "SL:cross","time"] <- runtime[2]
     
     ### SINGLE MODELS ###
     
@@ -528,7 +528,7 @@ for(i in dgp){
                              #moments = 3, int = TRUE,
                              method = "ebal", data = data)
     runtime <- proc.time() - start_time
-    runtimes["Bal:SL:Yd","time"] <- runtime[2]
+    runtimes[DGP == i & Simulation == j & algorithm == "Bal:SL:Yd","time"] <- runtime[2]
     results[Estimator == 'Bal:Yd:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(bal_ydhat_sl), data = data)$coefficients["z"]-ate
@@ -582,7 +582,7 @@ for(i in dgp){
     start_time <- proc.time()
     fit_gKRLS_binom <- mgcv::gam(fmlps, family = "binomial", data = data)
     runtime <- proc.time() - start_time
-    runtimes["Krls:ps","time"] <- runtime[2]
+    runtimes[DGP == i & Simulation == j & algorithm == "Krls:ps","time"] <- runtime[2]
     # Predicted probabilities
     data$ps_krls_binom <- predict.gam(fit_gKRLS_binom, type = "response")
     
@@ -624,7 +624,7 @@ for(i in dgp){
     start_time <- proc.time()
     sl_ps <- esl$train(task = task_ps)
     runtime <- proc.time() - start_time
-    runtimes["SL:ps","time"] <- runtime[2]
+    runtimes[DGP == i & Simulation == j & algorithm == "SL:ps","time"] <- runtime[2]
     
     #test <- lrn_XX$train(task = task_ps)
     #summary(test$predict())
@@ -690,7 +690,7 @@ for(i in dgp){
                        stabilize = TRUE,
                        data = data)
     runtime <- proc.time() - start_time
-    runtimes["Bal:SL:ps","time"] <- runtime[2]
+    runtimes[DGP == i & Simulation == j & algorithm == "Bal:SL:ps","time"] <- runtime[2]
     results[Estimator == 'Bal:IPW:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(ipw_sl), data = data)$coefficients["z"]-ate
@@ -795,7 +795,7 @@ for(i in dgp){
     fit_gKRLS_binom <- mgcv::gam(z ~ s(y1hat_krls, y0hat_krls, bs = "gKRLS"), 
                                  family = "binomial", data = data)
     runtime <- proc.time() - start_time
-    runtimes["Krls:pps","time"] <- runtime[2]
+    runtimes[DGP == i & Simulation == j & algorithm == "Krls:pps","time"] <- runtime[2]
     # Predicted probabilities
     data$pps_krls_binom <- predict.gam(fit_gKRLS_binom, type = "response")
     
@@ -862,7 +862,7 @@ for(i in dgp){
     start_time <- proc.time()
     sl_pps <- esl$train(task = task_pps)
     runtime <- proc.time() - start_time
-    runtimes["SL:pps","time"] <- runtime[2]
+    runtimes[DGP == i & Simulation == j & algorithm == "SL:pps","time"] <- runtime[2]
     data$pps_sl <- sl_pps$predict()
     
     
@@ -926,7 +926,7 @@ for(i in dgp){
                         stabilize = TRUE,
                         data = data)
     runtime <- proc.time() - start_time
-    runtimes["Bal:SL:pps","time"] <- runtime[2]
+    runtimes[DGP == i & Simulation == j & algorithm == "Bal:SL:pps","time"] <- runtime[2]
     results[Estimator == 'IPPW:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(ippw_sl), data = data)$coefficients["z"]-ate
