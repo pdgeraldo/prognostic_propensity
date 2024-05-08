@@ -130,7 +130,7 @@ set.seed(24500-03)
 # (1:20), corresponding to the do-it-yourself part of the competition
 dgp <- 1:n_dgps
 # For now
-dgp <- 1:5
+dgp <- 6:7
 
 for(i in dgp){
   
@@ -971,17 +971,31 @@ results_clean <- results |>
     stringr::str_detect(Estimator, "G-comp") ~ "G-computation",
     stringr::str_detect(Estimator, "Bal") ~ "Balance",
     stringr::str_detect(Estimator, "DR") ~ "Doubly Robust",
-    .default = "None"
-  ))
+    .default = "None"),
+    learner = dplyr::case_when(
+      grepl("SL", Estimator) ~ "SL",
+      grepl("Lasso", Estimator) ~ "Lasso",
+      grepl("LinLog", Estimator) ~ "Lin",
+      grepl("LogLin", Estimator) ~ "Lin",
+      grepl("xgboost", Estimator) ~ "XGB",
+      grepl("earth", Estimator) ~ "Earth",
+      grepl("Krls", Estimator) ~ "Krls",
+      .default = "Other"))
 
 # Bias distribution
 results_clean |> 
-  dplyr::filter(!grepl("DR:DML", Estimator),Estimator!="DR:TMLE:grf") |> 
+  dplyr::filter(!grepl("DR:DML", Estimator), Estimator!="DR:TMLE:grf") |> 
   ggplot(aes(y=Estimator, x=Bias, color = type)) +
   geom_boxplot() +
   geom_vline(xintercept = 0, color = "red", linetype = "dashed")+
-  theme_bw() +
-  facet_wrap(~DGP)
+  theme_bw()
+
+results_clean |> 
+  dplyr::filter(!grepl("DR:DML", Estimator), Estimator!="DR:TMLE:grf") |> 
+  ggplot(aes(y=Estimator, x=Bias, color = learner)) +
+  geom_boxplot() +
+  geom_vline(xintercept = 0, color = "red", linetype = "dashed")+
+  theme_bw()
 
 # Bias average
 results_clean |> 
@@ -1005,13 +1019,12 @@ results_clean |>
 # RMSE
 results_clean |> 
   dplyr::filter(!grepl("DR:DML", Estimator), Estimator!="DR:TMLE:grf") |> 
-  dplyr::group_by(Estimator, DGP) |> 
+  dplyr::group_by(Estimator) |> 
   dplyr::reframe(RMSE = sqrt(mean(Bias^2)), type = type) |> 
   dplyr::arrange(RMSE) |> #print()
   ggplot(aes(y=Estimator, x=RMSE, color = type)) +
   geom_point() +
-  theme_bw() +
-  facet_wrap(~DGP)
+  theme_bw()
 
 # Bias-RMSE corr
 results |> dplyr::filter(!is.na(Bias)) |> 
