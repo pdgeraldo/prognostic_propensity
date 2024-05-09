@@ -946,23 +946,11 @@ for(i in dgp){
 ```{r, eval=FALSE}
 library(ggplot2)
 # Add DML results
-results_dml <- readRDS("/Users/pablogeraldo/Downloads/results_dml")
+results_dml <- read.csv("/Volumes/Fellows/geraldo/results_dml.csv")
+results_dml <- results_dml |> dplyr::filter(DGP <= 8)
 
-for(j in 1:100){
-  results[Estimator == 'DR:DML:LogLin' & 
-            DGP == 1 & Simulation == j ,'Bias'] <-
-    results_dml[[j]][[2]]-ate
-  
-  results[Estimator == 'DR:DML:xgboost' & 
-            DGP == 1 & Simulation == j ,'Bias'] <-
-    results_dml[[j]][[6]]-ate
-  
-  results[Estimator == 'DR:DML:SL' & 
-            DGP == 1 & Simulation == j ,'Bias'] <-
-    results_dml[[j]][[1]]-ate
-}
 
-results_clean <- results |> 
+results_clean <- rbind(results, results_dml) |> 
   dplyr::filter(!is.na(Bias)) |> 
   dplyr::mutate(type = dplyr::case_when(
     stringr::str_detect(Estimator, "Coeff") ~ "Coefficient",
@@ -984,10 +972,12 @@ results_clean <- results |>
 
 # Bias distribution
 results_clean |> 
-  dplyr::filter(!grepl("DR:DML", Estimator), Estimator!="DR:TMLE:grf") |> 
+  #dplyr::filter(!grepl("DR:DML", Estimator), Estimator!="DR:TMLE:grf") |> 
   ggplot(aes(y=Estimator, x=Bias, color = type)) +
   geom_boxplot() +
-  geom_vline(xintercept = 0, color = "red", linetype = "dashed")+
+  geom_jitter(alpha = 0.15) +
+  geom_vline(xintercept = 0, color = "red", linetype = "dashed") +
+  scale_x_continuous(transform = ggallin::pseudolog10_trans) +
   theme_bw()
 
 results_clean |> 
