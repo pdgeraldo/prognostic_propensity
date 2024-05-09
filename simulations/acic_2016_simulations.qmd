@@ -130,7 +130,7 @@ set.seed(24500-03)
 # (1:20), corresponding to the do-it-yourself part of the competition
 dgp <- 1:n_dgps
 # For now
-dgp <- 6:7
+dgp <- 8
 
 for(i in dgp){
   
