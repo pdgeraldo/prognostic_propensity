@@ -949,7 +949,7 @@ library(ggplot2)
 results_dml <- read.csv("/Volumes/Fellows/geraldo/results_dml.csv")
 results_dml <- results_dml |> dplyr::filter(DGP <= 8)
 
-
+# Combine results of different estimators
 results_clean <- rbind(results, results_dml) |> 
   dplyr::filter(!is.na(Bias)) |> 
   dplyr::mutate(type = dplyr::case_when(
@@ -970,26 +970,29 @@ results_clean <- rbind(results, results_dml) |>
       grepl("Krls", Estimator) ~ "Krls",
       .default = "Other"))
 
-# Bias distribution
+results_clean$Estim_bias = with(results_clean, reorder(Estimator, Bias, mean))
+
+# Bias distribution (by type)
 results_clean |> 
   #dplyr::filter(!grepl("DR:DML", Estimator), Estimator!="DR:TMLE:grf") |> 
-  ggplot(aes(y=Estimator, x=Bias, color = type)) +
-  geom_boxplot() +
-  geom_jitter(alpha = 0.15) +
+  ggplot(aes(y=Estim_rmse, x=Bias, color = type)) +
+  geom_boxplot(outliers = FALSE) +
+  #geom_jitter(alpha = 0.15, outliers = FALSE) +
   geom_vline(xintercept = 0, color = "red", linetype = "dashed") +
-  scale_x_continuous(transform = ggallin::pseudolog10_trans) +
-  theme_bw()
+  theme_bw() +
+  facet_wrap(~DGP)
 
+# Bias distribution (by learner)
 results_clean |> 
-  dplyr::filter(!grepl("DR:DML", Estimator), Estimator!="DR:TMLE:grf") |> 
+  #dplyr::filter(!grepl("DR:DML", Estimator), Estimator!="DR:TMLE:grf") |> 
   ggplot(aes(y=Estimator, x=Bias, color = learner)) +
   geom_boxplot() +
   geom_vline(xintercept = 0, color = "red", linetype = "dashed")+
-  theme_bw()
+  theme_bw() +
+  facet_wrap(~DGP)
 
 # Bias average
 results_clean |> 
-  dplyr::filter(!grepl("DR:DML", Estimator), Estimator!="DR:TMLE:grf") |> 
   dplyr::group_by(Estimator, DGP) |> 
   dplyr::reframe(Bias = mean(Bias), type = type) |> 
   ggplot(aes(y=Estimator, x=Bias, color = type)) +
@@ -997,23 +1000,17 @@ results_clean |>
   theme_bw() +
   facet_wrap(~DGP)
 
-# Bias reduction
-# results_clean |> 
-#   dplyr::filter(!grepl("DR:DML", Estimator), Estimator!="DR:TMLE:grf") |> 
-#   dplyr::mutate(Bias_reduction = Bias*100/results_clean[Estimator=="Diff-in-means", "Bias"]) |> 
-#   ggplot(aes(y=Estimator, x=Bias_reduction, color = type)) +
-#   geom_boxplot() +
-#   theme_bw() +
-#   facet_wrap(~DGP)
 
 # RMSE
 results_clean |> 
-  dplyr::filter(!grepl("DR:DML", Estimator), Estimator!="DR:TMLE:grf") |> 
-  dplyr::group_by(Estimator) |> 
-  dplyr::reframe(RMSE = sqrt(mean(Bias^2)), type = type) |> 
-  dplyr::arrange(RMSE) |> #print()
+  #dplyr::filter(!grepl("DR:DML", Estimator), Estimator!="DR:TMLE:grf") |> 
+  dplyr::group_by(Estimator, type) |> 
+  dplyr::summarise(RMSE = sqrt(mean(Bias^2))) |> 
+  dplyr::arrange(RMSE)  |> 
+  dplyr::mutate(Estimator = factor(Estimator, levels = Estimator)) |> 
   ggplot(aes(y=Estimator, x=RMSE, color = type)) +
-  geom_point() +
+  geom_segment(aes(yend = Estimator, xend = 0)) +
+  geom_point(size = 4) +
   theme_bw()
 
 # Bias-RMSE corr
