@@ -1,25 +1,143 @@
 ---
-title: "TFBAL simulations"
+title: "DRS sims (Nguyen et al., 2023)"
 format: pdf
 ---
 
-## Quarto
+## Data Generating Process
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+The DGP used by Nguyen et al. (2023) to test the performance of their weighting estimators for the ATT based on the prognostic score, is taken from Wyss et al. (2015) where they tested similar matching methods.
 
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+(The replication of the original simulation below was generated with the help of Claude, based on the description of the simulation provided by the authors)
 
 ```{r}
-1 + 1
+simulate_data <- function(n = size, 
+                          confounding = "moderate", # Can be "weak", "moderate", or "strong"
+                          effect_modification = FALSE) {
+  
+  # Set confounding bounds based on scenario
+  bounds <- switch(confounding,
+                   "weak" = c(-0.182, 0.182),
+                   "moderate" = c(-0.405, 0.405),
+                   "strong" = c(-0.7, 0.7))
+  
+  # Generate alpha and beta coefficients
+  alpha <- runif(100, min = bounds[1], max = bounds[2])
+  beta <- runif(100, min = bounds[1], max = bounds[2])
+  
+  # Set treatment effect and interaction parameters
+  beta_A <- 0  # null treatment effect
+  beta_int <- ifelse(effect_modification, 0.7, 0)
+  
+  # Generate confounders
+  X <- matrix(0, nrow = n, ncol = 100)
+  # X1 to X96 from binomial(1, 0.5)
+  X[, 1:96] <- matrix(rbinom(n * 96, 1, 0.5), nrow = n)
+  # X97 to X100 from standard normal
+  X[, 97:100] <- matrix(rnorm(n * 4), nrow = n)
+  
+  # Generate treatment assignment probabilities
+  logit_A <- alpha[1] + X %*% alpha  # alpha[1] serves as alpha_0
+  prob_A <- 1 / (1 + exp(-logit_A))
+  A <- rbinom(n, 1, prob_A)
+  
+  # Generate potential outcomes
+  # For treated (Y1)
+  logit_Y1 <- beta[1] + X %*% beta + beta_A + beta_int * X[, 1]
+  prob_Y1 <- 1 / (1 + exp(-logit_Y1))
+  Y1 <- rbinom(n, 1, prob_Y1)
+  
+  # For control (Y0)
+  logit_Y0 <- beta[1] + X %*% beta
+  prob_Y0 <- 1 / (1 + exp(-logit_Y0))
+  Y0 <- rbinom(n, 1, prob_Y0)
+  
+  # Generate observed outcome using consistency equation
+  Y <- A * Y1 + (1 - A) * Y0
+  
+  # Return data frame with all variables
+  data <- data.frame(Y = Y, A = A)
+  data <- cbind(data, X)
+  colnames(data)[3:102] <- paste0("X", 1:100)
+  
+  # Also return true parameters for verification
+  params <- list(
+    alpha = alpha,
+    beta = beta,
+    beta_A = beta_A,
+    beta_int = beta_int
+  )
+  
+  return(list(data = data, params = params))
+}
+
 ```
 
-You can add options to executable code like this 
+
+## Estimators
+
+The estimators in Nguyen are obtained from their own code. 
 
 ```{r}
-#| echo: false
-2 * 2
+
+# target distribution weighting
+# a: treatment exposure [0;1]; x: score (e.g. disease-risk score); data: dataset; estimand: “ate” (default),“att” or “atu”
+tdw <- function(a, x, data, estimand="att", 
+                bw="nrd0", method = "linear", 
+                rule = 1, f = 0, ties = mean){
+  d <- density(data[,x], bw=bw)
+  f <- approxfun(d, method=method, rule=rule, f=f, ties=ties)
+  d0 <- density(data[data[,a]==0,x] , bw=bw)
+  f0 <- approxfun(d0, method=method, rule=rule, f=f, ties=ties)
+  d1 <- density(data[data[,a]==1,x] , bw=bw)
+  f1 <- approxfun(d1, method=method, rule=rule, f=f, ties=ties)
+  if(estimand=="ate") {
+    data[data[,a]==1,"w"] <- f(data[data[,a]==1,x])/f1(data[data[,a]==1,x])
+    data[data[,a]==0,"w"] <- f(data[data[,a]==0,x])/f0(data[data[,a]==0,x])
+  } else if(estimand=="att") {
+    data[data[,a]==1,"w"] <- 1
+    data[data[,a]==0,"w"] <- f1(data[data[,a]==0,x])/f0(data[data[,a]==0,x])
+  } else if(estimand=="atu") {
+    data[data[,a]==1,"w"] <- f0(data[data[,a]==1,x])/f1(data[data[,a]==1,x])
+    data[data[,a]==0,"w"] <- 1
+  }
+  TDW <- data[,"w"]
+  return(TDW)
+}
+
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+
+## Evaluation
+
+
+```{r}
+
+# Set seed for reproducibility
+set.seed(1973)
+
+reps <- 10 # Number of replication
+size <- 100 # Sample size for each replication
+
+# Run simulation
+results <- replicate(reps, {
+  sim <- simulate_data(n = size, 
+                       confounding = "moderate",
+                       effect_modification = FALSE)
+  # Test estimators
+  
+  
+  
+  
+  # Return relevant statistics
+}, simplify = TRUE)
+
+
+data <- results[1,1]$data
+fml <- reformulate(names(data[,3:102]), response = "Y")
+drs <- lm(fml, data = data[data$A==0,])
+drs <- predict(drs, newdata = data)
+
+tdw(a = A, x = drs, data = data)
+
+```
+
