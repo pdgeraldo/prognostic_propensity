@@ -61,37 +61,28 @@ We first create the container data.frame to store results across simulations.
 # Create container for the simulation results
 # dim: [n_estimators x n_sims x n_dgps] by [n_metrics]
 
-# Define number of simulations and number of GDPs to be tested
-n_sims <- 5#100
-n_dgps <- 20
+# Define number of simulations and number of DGPs to be tested
+n_sims <- 10#100
+n_dgps <- 20#20
 
 # Define estimators and metrics to be used
 estimators <- c("Diff-in-means",
-                "Coeff:Linear","Coeff:Linear:Lin","Coeff:Lasso",
-                "G-comp:single:Lasso","G-comp:single:xgboost","G-comp:single:earth",
-                "G-comp:single:Krls","G-comp:single:SL",
-                "G-comp:cross:Lasso","G-comp:cross:xgboost","G-comp:cross:earth",
-                "G-comp:cross:Krls","G-comp:cross:SL",
-                "Bal:PSM:Logit","Bal:PSM:Lasso","Bal:PSM:xgboost",
-                "Bal:PSM:earth","Bal:PSM:Krls","Bal:PSM:SL",
-                "Bal:IPW:Logit","Bal:IPW:Lasso","Bal:IPW:xgboost",
-                "Bal:IPW:earth","Bal:IPW:Krls","Bal:IPW:SL",
-                "Bal:Ebal:raw", "Bal:Ebal:expand",
-                "Bal:Yd:Lin","Bal:Yd:Lasso","Bal:Yd:xgboost",
-                "Bal:Yd:earth","Bal:Yd:Krls","Bal:Yd:SL","Bal:Yd:all",
-                "DR:AIPW:LogLin","DR:AIPW:Lasso",
-                "DR:AIPW:xgboost","DR:AIPW:grf",
+                "Coeff:Linear","Coeff:Linear:Lin",
+                "G-comp:single:xgboost","G-comp:single:earth",
+                "G-comp:single:Krls","G-comp:single:bart",
+                "Bal:Ebal:raw", "Bal:Ebal:expand","Bal:Yd:Lin",
+                "Bal:Yd:xgboost","Bal:Yd:earth",
+                "Bal:Yd:Krls","Bal:Yd:bart","Bal:Yd:all",
+                "Bal:IPW:raw", "Bal:IPW:expand",
+                "Bal:IPW:Lin","Bal:IPW:Lasso","Bal:IPW:xgboost",
+                "Bal:IPW:earth","Bal:IPW:Krls","Bal:IPW:bart","Bal:IPW:all",
+                "DR:AIPW:LogLin",
+                "DR:AIPW:xgboost","DR:AIPW:bart",
                 "DR:AIPW:earth","DR:AIPW:Krls","DR:AIPW:SL",
-                "DR:TMLE:LogLin","DR:TMLE:xgboost","DR:TMLE:grf",
+                "DR:TMLE:LogLin","DR:TMLE:xgboost","DR:TMLE:bart",
                 "DR:TMLE:earth","DR:TMLE:Krls","DR:TMLE:SL",
                 "DR:DML:LogLin","DR:DML:xgboost",
-                "DR:DML:earth","DR:DML:Krls","DR:DML:SL",
-                "PPSM:LinLin","PPSM:LinLog",
-                "PPSM:Lasso","PPSM:xgboost",
-                "PPSM:earth","PPSM:Krls","PPSM:SL",
-                "IPPW:LinLin","IPPW:LinLog",
-                "IPPW:Lasso","IPPW:xgboost",
-                "IPPW:earth","IPPW:Krls","IPPW:SL"
+                "DR:DML:earth","DR:DML:Krls","DR:DML:SL"
 )
 metrics <- c("DGP","Simulation","ATE","ATT","ATC",
              "Estimator","Bias","SE",
@@ -106,18 +97,18 @@ results[, ':='(DGP = rep(1:n_dgps, each = n_sims*length(estimators)),
                Simulation = rep(1:n_sims, each = length(estimators), times = n_dgps),
                Estimator = rep(estimators, times = n_dgps*n_sims))]
 
-# Running times
-model_type <- c("Krls:single","SL:single","Krls:cross","SL:cross",
-                "Krls:ps","SL:ps","Krls:pps","SL:pps",
-                "Bal:SL:ps","Bal:SL:Yd","Bal:SL:pps")
-metrics <- c("DGP","Simulation","algorithm","time")
-runtimes <- matrix(NA_real_, 
-                   nrow = n_sims* n_dgps * length(model_type),
-                   ncol = length(metrics)) |> data.table()
-names(runtimes) <- metrics
-runtimes[, ':='(DGP = rep(1:n_dgps, each = n_sims*length(model_type)),
-                Simulation = rep(1:n_sims, each = length(model_type), times = n_dgps),
-                algorithm = rep(model_type, times = n_dgps*n_sims))]
+# # Running times
+# model_type <- c("Krls:single","SL:single","Krls:cross","SL:cross",
+#                 "Krls:ps","SL:ps","Krls:pps","SL:pps",
+#                 "Bal:SL:ps","Bal:SL:Yd","Bal:SL:pps")
+# metrics <- c("DGP","Simulation","algorithm","time")
+# runtimes <- matrix(NA_real_, 
+#                    nrow = n_sims* n_dgps * length(model_type),
+#                    ncol = length(metrics)) |> data.table()
+# names(runtimes) <- metrics
+# runtimes[, ':='(DGP = rep(1:n_dgps, each = n_sims*length(model_type)),
+#                 Simulation = rep(1:n_sims, each = length(model_type), times = n_dgps),
+#                 algorithm = rep(model_type, times = n_dgps*n_sims))]
 ```
 
 Now setup the full simulation
@@ -133,8 +124,6 @@ set.seed(24500-03)
 # Iterate over different DGPs 
 # (1:20), corresponding to the do-it-yourself part of the competition
 dgp <- 1:n_dgps
-# For now
-#dgp <- 9:12
 
 for(i in dgp){
   
@@ -219,9 +208,9 @@ for(i in dgp){
     # Fit the model
     start_time <- proc.time()
     fit_gKRLS <- mgcv::gam(fml, data = data) 
-    runtime <- proc.time() - start_time
-    runtimes[DGP == i & Simulation == j & algorithm == "Krls:single","time"] <- runtime[2]
-    
+    # runtime <- proc.time() - start_time
+    # runtimes[DGP == i & Simulation == j & algorithm == "Krls:single","time"] <- runtime[2]
+    # 
     # Store result: Estimated through g-computation
     results[Estimator == 'G-comp:single:Krls' & 
               DGP == i & Simulation == j ,'Bias'] <- 
@@ -241,21 +230,15 @@ for(i in dgp){
     start_time <- proc.time()
     fit_gKRLSy1 <- mgcv::gam(fml2, data = subset(data, z==1)) 
     fit_gKRLSy0 <- mgcv::gam(fml2, data = subset(data, z==0))
-    runtime <- proc.time() - start_time
-    runtimes[DGP == i & Simulation == j & algorithm == "Krls:cross","time"] <- runtime[2]
-    
+    # runtime <- proc.time() - start_time
+    # runtimes[DGP == i & Simulation == j & algorithm == "Krls:cross","time"] <- runtime[2]
+    # 
     # Store result: g-computation
     results[Estimator == 'G-comp:cross:Krls' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       # V1: model based for whole sample
       (mean(predict.gam(fit_gKRLSy1, newdata = dataZ1))-
          mean(predict.gam(fit_gKRLSy0, newdata = dataZ0)))-ate
-    # V2: model based, but for the opposite subset (cross; not really the target)
-    #(mean(predict.gam(fit_gKRLSy1, newdata = dataZ1[data$z==0]))-
-    #   mean(predict.gam(fit_gKRLSy0, newdata = dataZ0[data$z==1])))-ate
-    # V3: combine observed and model based for whole sample (same as v1)
-    #mean(c(predict.gam(fit_gKRLSy1, newdata = dataZ1[data$z==0,]),data$y[data$z==1]))-
-    #mean(c(predict.gam(fit_gKRLSy0, newdata = dataZ0[data$z==1,]),data$y[data$z==0]))-ate
     
     
     ###################
@@ -317,14 +300,14 @@ for(i in dgp){
     lrn_glm <- Lrnr_glm$new()
     
     # Regularized regression (lasso, elastic net, and ridge)
-    lrn_lasso <- Lrnr_glmnet$new(alpha = 0)
+    #lrn_lasso <- Lrnr_glmnet$new(alpha = 0)
     #lrn_en025 <- Lrnr_glmnet$new(alpha = 0.25)
-    lrn_en050 <- Lrnr_glmnet$new(alpha = 0.5)
+    #lrn_en050 <- Lrnr_glmnet$new(alpha = 0.5)
     #lrn_en075 <- Lrnr_glmnet$new(alpha = 0.75)
-    lrn_ridge <- Lrnr_glmnet$new(alpha = 1)
+    #lrn_ridge <- Lrnr_glmnet$new(alpha = 1)
     
     # Additional, more flexible learners
-    lrn_pspl <- Lrnr_polspline$new() # polynomial splines
+    #lrn_pspl <- Lrnr_polspline$new() # polynomial splines
     lrn_earth <- Lrnr_earth$new() # multivariate adaptive regression splines
     # highly adaptive lasso (very slow! Take out)
     #lrn_hal <- Lrnr_hal9001$new() 
@@ -332,10 +315,11 @@ for(i in dgp){
     # Tree-based methods
     #lrn_ranger <- Lrnr_ranger$new()
     lrn_xgb <- Lrnr_xgboost$new()
+    lrn_bart <- Lrnr_dbarts$new()
     
     # Add some extra learners
-    lrn_gam <- Lrnr_gam$new()
-    lrn_bayesglm <- Lrnr_bayesglm$new()
+    #lrn_gam <- Lrnr_gam$new()
+    #lrn_bayesglm <- Lrnr_bayesglm$new()
     
     # Not working insider SL (Take out)
     #lrn_krls <- Lrnr_gam$new(fml1) 
@@ -348,34 +332,35 @@ for(i in dgp){
     
     stack <- Stack$new(
       "mean" = lrn_mean, "glm" = lrn_glm, 
-      "lasso" = lrn_lasso, "ridge" = lrn_ridge, 
-      "en050" = lrn_en050,
+      #"lasso" = lrn_lasso, "ridge" = lrn_ridge, 
+      #"en050" = lrn_en050,
       #"en025" = lrn_en025, "en075" = lrn_en075, 
-      "polspline" = lrn_pspl, "earth" = lrn_earth, 
+      #"polspline" = lrn_pspl, 
+      "earth" = lrn_earth, 
       #"ranger" = lrn_ranger, 
       "xgboost" = lrn_xgb,
-      "gam" = lrn_gam, "bglm" = lrn_bayesglm)
+      "bart" = lrn_bart)
     
     #####################
     # Instantiate the meta-learners
     #####################
     
     # Non-negative least squares
-    sl_nnls <- Lrnr_sl$new(learners = stack,
-                           metalearner = Lrnr_nnls$new())
+    #sl_nnls <- Lrnr_sl$new(learners = stack,
+                           #metalearner = Lrnr_nnls$new())
     # Earth
-    sl_earth <- Lrnr_sl$new(learners = stack,
-                            metalearner = Lrnr_earth$new())
+    #sl_earth <- Lrnr_sl$new(learners = stack,
+                            #metalearner = Lrnr_earth$new())
     # xgboost
-    sl_xgb <- Lrnr_sl$new(learners = stack,
-                          metalearner = Lrnr_xgboost$new())
+    #sl_xgb <- Lrnr_sl$new(learners = stack,
+                          #metalearner = Lrnr_xgboost$new())
     
     # Discrete SL: select the best learner (including SL as candidate)
     # Not working for now, so skip CV selector and final step
     # Just use the nnls eSL directly 
-    stack_meta <- Stack$new(stack, sl_nnls, sl_earth, sl_xgb)
-    cv_selector <- Lrnr_cv_selector$new(eval_function = loss_squared_error)
-    dsl <- Lrnr_sl$new(stack_meta, metalearner = cv_selector)
+    #stack_meta <- Stack$new(stack, sl_nnls, sl_earth, sl_xgb)
+    #cv_selector <- Lrnr_cv_selector$new(eval_function = loss_squared_error)
+    #dsl <- Lrnr_sl$new(stack_meta, metalearner = cv_selector)
     
     # Not runing the above, only this last ensemble
     esl <- Lrnr_sl$new(stack, metalearner = Lrnr_nnls$new())
@@ -385,20 +370,20 @@ for(i in dgp){
     #####################
     
     # First: single model for the outcome
-    start_time <- proc.time()
+    #start_time <- proc.time()
     sl_y <- esl$train(task = task_y)
     # Add here the CV selector later
-    runtime <- proc.time() - start_time
-    runtimes[DGP == i & Simulation == j & algorithm == "SL:single","time"] <- runtime[2]
+    #runtime <- proc.time() - start_time
+    #runtimes[DGP == i & Simulation == j & algorithm == "SL:single","time"] <- runtime[2]
     
     # Then: cross-models for the outcome
     # For the treated
-    start_time <- proc.time()
+    #start_time <- proc.time()
     sl_y1 <- esl$train(task = task_y1)
     # For the controls
     sl_y0 <- esl$train(task = task_y0)
-    runtime <- proc.time() - start_time
-    runtimes[DGP == i & Simulation == j & algorithm == "SL:cross","time"] <- runtime[2]
+    #runtime <- proc.time() - start_time
+    #runtimes[DGP == i & Simulation == j & algorithm == "SL:cross","time"] <- runtime[2]
     
     ### SINGLE MODELS ###
     
@@ -408,19 +393,19 @@ for(i in dgp){
       sl_y$learner_fits$glm$coefficients["z"]-ate
     
     # Lasso, treatment term
-    results[Estimator == 'Coeff:Lasso' & 
-              DGP == i & Simulation == j ,'Bias'] <- 
-      sl_y$learner_fits$lasso$coefficients[2]-ate
+    #results[Estimator == 'Coeff:Lasso' & 
+      #        DGP == i & Simulation == j ,'Bias'] <- 
+      #sl_y$learner_fits$lasso$coefficients[2]-ate
     
     # Finally: obtaining predictions, g-computation
     # Both from the SL and also single learners inside the stack
     
     # Lasso, g-comp
-    data$y1hat_lasso <- sl_y$learner_fits$lasso$predict(task = task_y1hat)
-    data$y0hat_lasso <- sl_y$learner_fits$lasso$predict(task = task_y0hat)
-    results[Estimator == 'G-comp:single:Lasso' & 
-              DGP == i & Simulation == j ,'Bias'] <- 
-      mean(data$y1hat_lasso - data$y0hat_lasso)-ate
+    #data$y1hat_lasso <- sl_y$learner_fits$lasso$predict(task = task_y1hat)
+    #data$y0hat_lasso <- sl_y$learner_fits$lasso$predict(task = task_y0hat)
+    #results[Estimator == 'G-comp:single:Lasso' & 
+    #          DGP == i & Simulation == j ,'Bias'] <- 
+    #  mean(data$y1hat_lasso - data$y0hat_lasso)-ate
     
     # xgboost
     data$y1hat_xgb <- sl_y$learner_fits$xgboost$predict(task = task_y1hat)
@@ -428,6 +413,13 @@ for(i in dgp){
     results[Estimator == 'G-comp:single:xgboost' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       mean(data$y1hat_xgb - data$y0hat_xgb)-ate
+    
+    # bart
+    data$y1hat_bart <- sl_y$learner_fits$bart$predict(task = task_y1hat)
+    data$y0hat_bart <- sl_y$learner_fits$bart$predict(task = task_y0hat)
+    results[Estimator == 'G-comp:single:bart' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      mean(data$y1hat_bart - data$y0hat_bart)-ate
     
     # Earth
     data$y1hat_earth <- sl_y$learner_fits$earth$predict(task = task_y1hat)
@@ -450,36 +442,7 @@ for(i in dgp){
     #y1hat_sl_imp <- ifelse(data$z==1, data$y, y1hat_sl)
     #y0hat_sl_imp <- ifelse(data$z==0, data$y, y0hat_sl)
     #mean(y1hat_sl_imp - y0hat_sl_imp)
-    
-    ### CROSS MODELS ###
-    
-    # Lasso, g-comp
-    data$y1xhat_lasso <- sl_y1$learner_fits$lasso$predict(task = task_yxhat)
-    data$y0xhat_lasso <- sl_y0$learner_fits$lasso$predict(task = task_yxhat)
-    results[Estimator == 'G-comp:cross:Lasso' & 
-              DGP == i & Simulation == j ,'Bias'] <- 
-      mean(data$y1xhat_lasso - data$y0xhat_lasso)-ate
-    
-    # xgboost
-    data$y0xhat_xgb <- sl_y0$learner_fits$xgboost$predict(task = task_yxhat)
-    data$y1xhat_xgb <- sl_y1$learner_fits$xgboost$predict(task = task_yxhat)
-    results[Estimator == 'G-comp:cross:xgboost' & 
-              DGP == i & Simulation == j ,'Bias'] <- 
-      mean(data$y1xhat_xgb - data$y0xhat_xgb)-ate
-    
-    # Earth
-    data$y1xhat_earth <- sl_y1$learner_fits$earth$predict(task = task_yxhat)
-    data$y0xhat_earth <- sl_y0$learner_fits$earth$predict(task = task_yxhat)
-    results[Estimator == 'G-comp:cross:earth' & 
-              DGP == i & Simulation == j ,'Bias'] <- 
-      mean(data$y1xhat_earth - data$y0xhat_earth)-ate
-    
-    # SuperLearner
-    data$y1xhat_sl <- sl_y1$predict(task = task_yxhat)
-    data$y0xhat_sl <- sl_y0$predict(task = task_yxhat)
-    results[Estimator == 'G-comp:cross:SL' & 
-              DGP == i & Simulation == j ,'Bias'] <- 
-      mean(data$y1xhat_sl - data$y0xhat_sl)-ate
+  
     
     
     ####################################
@@ -494,13 +457,13 @@ for(i in dgp){
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(bal_ydhat_lin), data = data)$coefficients["z"]-ate
     
-    # Yd balance: Lasso
-    bal_ydhat_lasso <- weightit(formula = z ~ y1hat_lasso + y0hat_lasso,
-                                #moments = 3, int = TRUE,
-                                method = "ebal", data = data)
-    results[Estimator == 'Bal:Yd:Lasso' & 
-              DGP == i & Simulation == j ,'Bias'] <- 
-      lm(y ~ z, weights = get.w(bal_ydhat_lasso), data = data)$coefficients["z"]-ate
+    # # Yd balance: Lasso
+    # bal_ydhat_lasso <- weightit(formula = z ~ y1hat_lasso + y0hat_lasso,
+    #                             #moments = 3, int = TRUE,
+    #                             method = "ebal", data = data)
+    # results[Estimator == 'Bal:Yd:Lasso' & 
+    #           DGP == i & Simulation == j ,'Bias'] <- 
+    #   lm(y ~ z, weights = get.w(bal_ydhat_lasso), data = data)$coefficients["z"]-ate
     
     # Yd balance: xgboost
     bal_ydhat_xgb <- weightit(formula = z ~ y1hat_xgb + y0hat_xgb,
@@ -509,6 +472,14 @@ for(i in dgp){
     results[Estimator == 'Bal:Yd:xgboost' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(bal_ydhat_xgb), data = data)$coefficients["z"]-ate
+    
+    # Yd balance: bart
+    bal_ydhat_bart <- weightit(formula = z ~ y1hat_bart + y0hat_bart,
+                              #moments = 3, int = TRUE,
+                              method = "ebal", data = data)
+    results[Estimator == 'Bal:Yd:bart' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = get.w(bal_ydhat_bart), data = data)$coefficients["z"]-ate
     
     # Yd balance: earth
     bal_ydhat_earth <- weightit(formula = z ~ y1hat_earth + y0hat_earth,
@@ -531,8 +502,8 @@ for(i in dgp){
     bal_ydhat_sl <- weightit(formula = z ~ y1hat_sl + y0hat_sl,
                              #moments = 3, int = TRUE,
                              method = "ebal", data = data)
-    runtime <- proc.time() - start_time
-    runtimes[DGP == i & Simulation == j & algorithm == "Bal:SL:Yd","time"] <- runtime[2]
+    # runtime <- proc.time() - start_time
+    # runtimes[DGP == i & Simulation == j & algorithm == "Bal:SL:Yd","time"] <- runtime[2]
     results[Estimator == 'Bal:Yd:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(bal_ydhat_sl), data = data)$coefficients["z"]-ate
@@ -540,7 +511,7 @@ for(i in dgp){
     # Yd balance: All
     bal_ydhat_all <- weightit(formula = z ~ 
                                 y1hat_lin + y0hat_lin +
-                                y1hat_lasso + y0hat_lasso +
+                                y1hat_bart + y0hat_bart +
                                 y1hat_xgb + y0hat_xgb +
                                 y1hat_earth + y0hat_earth +
                                 y1hat_krls + y0hat_krls +
@@ -585,8 +556,8 @@ for(i in dgp){
     # Fit the model (appropriate link function)
     start_time <- proc.time()
     fit_gKRLS_binom <- mgcv::gam(fmlps, family = "binomial", data = data)
-    runtime <- proc.time() - start_time
-    runtimes[DGP == i & Simulation == j & algorithm == "Krls:ps","time"] <- runtime[2]
+    # runtime <- proc.time() - start_time
+    # runtimes[DGP == i & Simulation == j & algorithm == "Krls:ps","time"] <- runtime[2]
     # Predicted probabilities
     data$ps_krls_binom <- predict.gam(fit_gKRLS_binom, type = "response")
     
@@ -604,10 +575,12 @@ for(i in dgp){
     # New stack: remove gam (and bayes glm), very slow for this task 
     stack <- Stack$new(
       "mean" = lrn_mean, "glm" = lrn_glm, 
-      "lasso" = lrn_lasso, "ridge" = lrn_ridge,
-      "en050" = lrn_en050, 
+      # "lasso" = lrn_lasso, "ridge" = lrn_ridge,
+      # "en050" = lrn_en050, 
       #"en025" = lrn_en025, "en075" = lrn_en075,
-      "polspline" = lrn_pspl, "earth" = lrn_earth, 
+      #"polspline" = lrn_pspl, 
+      "earth" = lrn_earth, 
+      "bart" = lrn_bart,
       #"ranger" = lrn_ranger, 
       "xgboost" = lrn_xgb)
     # Note: some learners give extreme propensity scores
@@ -616,19 +589,19 @@ for(i in dgp){
     # We stabilize for IPW
     
     # Discrete SL: select the best learner (including SL as candidate)
-    stack_meta <- Stack$new(stack, sl_nnls, sl_earth, sl_xgb)
-    cv_selector <- Lrnr_cv_selector$new(eval_function = loss_loglik_binomial)
-    dsl <- Lrnr_sl$new(stack_meta, metalearner = cv_selector)
+    #stack_meta <- Stack$new(stack, sl_nnls, sl_earth, sl_xgb)
+    #cv_selector <- Lrnr_cv_selector$new(eval_function = loss_loglik_binomial)
+    #dsl <- Lrnr_sl$new(stack_meta, metalearner = cv_selector)
     # Same as with outcome models, too slow to use
     # Then run the eSL with nnls (no CV)
     esl <- Lrnr_sl$new(stack, metalearner = Lrnr_nnls$new())
     
     # Now train the new task
     # First: single model for the outcome
-    start_time <- proc.time()
+    #start_time <- proc.time()
     sl_ps <- esl$train(task = task_ps)
-    runtime <- proc.time() - start_time
-    runtimes[DGP == i & Simulation == j & algorithm == "SL:ps","time"] <- runtime[2]
+    #runtime <- proc.time() - start_time
+    #runtimes[DGP == i & Simulation == j & algorithm == "SL:ps","time"] <- runtime[2]
     
     #test <- lrn_XX$train(task = task_ps)
     #summary(test$predict())
@@ -639,65 +612,88 @@ for(i in dgp){
     
     # IPW: logistic propensity score
     data$ps_logit <- sl_ps$learner_fits$glm$predict()
-    ipw_logit <- weightit(formula = cobalt::f.build("z", names(covs)),
-                          ps = "ps_logit",
-                          stabilize = TRUE,
-                          data = data)
+    wlogit <- get_w_from_ps(data$ps_logit, treat = data$z,
+                    estimand = "ATT")
+    # ipw_logit <- weightit(formula = cobalt::f.build("z", names(covs)),
+    #                       ps = "ps_logit",
+    #                       stabilize = TRUE,
+    #                       data = data)
     results[Estimator == 'Bal:IPW:Logit' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      lm(y ~ z, weights = get.w(ipw_logit), data = data)$coefficients["z"]-ate
+      lm(y ~ z, weights = wlogit, data = data)$coefficients["z"]-ate
     
     # IPW: Lasso pscore
-    data$ps_lasso <- sl_ps$learner_fits$lasso$predict()
-    ipw_lasso <- weightit(formula = cobalt::f.build("z", names(covs)),
-                          ps = "ps_lasso",
-                          stabilize = TRUE,
-                          data = data)
-    results[Estimator == 'Bal:IPW:Lasso' & 
-              DGP == i & Simulation == j ,'Bias'] <- 
-      lm(y ~ z, weights = get.w(ipw_lasso), data = data)$coefficients["z"]-ate
+    # data$ps_lasso <- sl_ps$learner_fits$lasso$predict()
+    # ipw_lasso <- weightit(formula = cobalt::f.build("z", names(covs)),
+    #                       ps = "ps_lasso",
+    #                       stabilize = TRUE,
+    #                       data = data)
+    # results[Estimator == 'Bal:IPW:Lasso' & 
+    #           DGP == i & Simulation == j ,'Bias'] <- 
+    #   lm(y ~ z, weights = get.w(ipw_lasso), data = data)$coefficients["z"]-ate
     
     # IPW: xgboost
     data$ps_xgb <- sl_ps$learner_fits$xgboost$predict()
-    ipw_xgb <- weightit(formula = cobalt::f.build("z", names(covs)),
-                        ps = "ps_xgb",
-                        stabilize = TRUE,
-                        data = data)
+    wxgb <- get_w_from_ps(data$ps_xgb, treat = data$z,
+                    estimand = "ATT")
+    # ipw_xgb <- weightit(formula = cobalt::f.build("z", names(covs)),
+    #                     ps = "ps_xgb",
+    #                     stabilize = TRUE,
+    #                     data = data)
     results[Estimator == 'Bal:IPW:xgboost' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      lm(y ~ z, weights = get.w(ipw_xgb), data = data)$coefficients["z"]-ate
+      lm(y ~ z, weights = wxgb, data = data)$coefficients["z"]-ate
+    
+    # IPW: bart
+    data$ps_bart <- sl_ps$learner_fits$bart$predict()
+    wbart <- get_w_from_ps(data$ps_bart, treat = data$z,
+                    estimand = "ATT")
+    ipw_bart <- weightit(formula = cobalt::f.build("z", names(covs)),
+                        ps = "ps_bart",
+                        stabilize = TRUE,
+                        data = data)
+    results[Estimator == 'Bal:IPW:bart' & 
+              DGP == i & Simulation == j ,'Bias'] <- 
+      lm(y ~ z, weights = wbart, data = data)$coefficients["z"]-ate
+    
     
     # IPW: earth
     data$ps_earth <- sl_ps$learner_fits$earth$predict()
-    ipw_earth <- weightit(formula = cobalt::f.build("z", names(covs)),
-                          ps = "ps_earth",
-                          stabilize = TRUE,
-                          data = data)
+    wearth <- get_w_from_ps(data$ps_earth, treat = data$z,
+                    estimand = "ATT")
+    # ipw_earth <- weightit(formula = cobalt::f.build("z", names(covs)),
+    #                       ps = "ps_earth",
+    #                       stabilize = TRUE,
+    #                       data = data)
     results[Estimator == 'Bal:IPW:earth' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      lm(y ~ z, weights = get.w(ipw_earth), data = data)$coefficients["z"]-ate
+      lm(y ~ z, weights = wearth, data = data)$coefficients["z"]-ate
     
     # IPW: krls
-    ipw_krls <- weightit(formula = cobalt::f.build("z", names(covs)),
-                         ps = "ps_krls_binom",
-                         stabilize = TRUE,
-                         data = data)
+    wkrls <- get_w_from_ps(data$ps_krls_binom, treat = data$z,
+                    estimand = "ATT")
+    # ipw_krls <- weightit(formula = cobalt::f.build("z", names(covs)),
+    #                      ps = "ps_krls_binom",
+    #                      stabilize = TRUE,
+    #                      data = data)
     results[Estimator == 'Bal:IPW:Krls' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      lm(y ~ z, weights = get.w(ipw_krls), data = data)$coefficients["z"]-ate
+      lm(y ~ z, weights = wkrls, data = data)$coefficients["z"]-ate
     
     # IPW: SL 
     data$ps_sl <- sl_ps$predict()
-    start_time <- proc.time()
-    ipw_sl <- weightit(formula = cobalt::f.build("z", names(covs)),
-                       ps = "ps_sl",
-                       stabilize = TRUE,
-                       data = data)
-    runtime <- proc.time() - start_time
-    runtimes[DGP == i & Simulation == j & algorithm == "Bal:SL:ps","time"] <- runtime[2]
+    #start_time <- proc.time()
+    wsl <- get_w_from_ps(data$ps_sl, treat = data$z,
+                    estimand = "ATT")
+    # ipw_sl <- weightit(formula = cobalt::f.build("z", names(covs)),
+    #                    ps = "ps_sl",
+    #                    stabilize = TRUE,
+    #                    data = data)
+    #runtime <- proc.time() - start_time
+    #runtimes[DGP == i & Simulation == j & algorithm == "Bal:SL:ps","time"] <- runtime[2]
     results[Estimator == 'Bal:IPW:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      lm(y ~ z, weights = get.w(ipw_sl), data = data)$coefficients["z"]-ate
+      lm(y ~ z, weights = wsl, data = data)$coefficients["z"]-ate
     
     # Now add two calibration weighting
     # Entropy balance with the raw covariates (mean balance)
@@ -707,16 +703,16 @@ for(i in dgp){
     # ebal_raw <- weightit(formula = cobalt::f.build("z", names(covs)),
     #                      method = "ebal", estimand = "ATE",
     #                      data = data)
-    # results[Estimator == 'Bal:Ebal:raw' & 
-    #           DGP == i & Simulation == j ,'Bias'] <- 
+    # results[Estimator == 'Bal:Ebal:raw' &
+    #           DGP == i & Simulation == j ,'Bias'] <-
     #   lm(y ~ z, weights = get.w(ebal_raw), data = data)$coefficients["z"]-ate
     # 
     # ebal_expand <- weightit(formula = cobalt::f.build("z", names(covs)),
     #                         method = "ebal", estimand = "ATE",
     #                         int = TRUE, moments = 2,
     #                         data = data)
-    # results[Estimator == 'Bal:Ebal:expand' & 
-    #           DGP == i & Simulation == j ,'Bias'] <- 
+    # results[Estimator == 'Bal:Ebal:expand' &
+    #           DGP == i & Simulation == j ,'Bias'] <-
     #   lm(y ~ z, weights = get.w(ebal_expand), data = data)$coefficients["z"]-ate
     
     
@@ -730,11 +726,11 @@ for(i in dgp){
       mean((data$z*(data$y-data$y1hat_lin)/data$ps_logit+data$y1hat_lin)-
              ((1-data$z)*((data$y-data$y0hat_lin)/(1-data$ps_logit))+data$y0hat_lin))-ate
     
-    # "DR:AIPW:Lasso"
-    results[Estimator == 'DR:AIPW:Lasso' & 
+    # "DR:AIPW:bart"
+    results[Estimator == 'DR:AIPW:bart' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      mean((data$z*(data$y-data$y1hat_lasso)/data$ps_lasso+data$y1hat_lasso)-
-             ((1-data$z)*((data$y-data$y0hat_lasso)/(1-data$ps_lasso))+data$y0hat_lasso))-ate
+      mean((data$z*(data$y-data$y1hat_bart)/data$ps_bart+data$y1hat_bart)-
+             ((1-data$z)*((data$y-data$y0hat_bart)/(1-data$ps_bart))+data$y0hat_bart))-ate
     
     # "DR:AIPW:xgboost"
     results[Estimator == 'DR:AIPW:xgboost' & 
@@ -761,17 +757,17 @@ for(i in dgp){
              ((1-data$z)*((data$y-data$y0hat_sl)/(1-data$ps_sl))+data$y0hat_sl))-ate
     
     # Generalized random forest : causal forest
-    grf <- grf::causal_forest(X = model.matrix(~ 0 + ., covs), 
-                              Y = data$y, W = data$z, num.trees = 4000)
-    aipw_grf <- grf::average_treatment_effect(grf, target.sample = "all", method = "AIPW")
-    tmle_grf <- grf::average_treatment_effect(grf, target.sample = "all", method = "TMLE")
+    # grf <- grf::causal_forest(X = model.matrix(~ 0 + ., covs), 
+    #                           Y = data$y, W = data$z, num.trees = 4000)
+    # aipw_grf <- grf::average_treatment_effect(grf, target.sample = "all", method = "AIPW")
+    # tmle_grf <- grf::average_treatment_effect(grf, target.sample = "all", method = "TMLE")
     
     # Store results: AIPW and TMLE
-    results[Estimator == 'DR:AIPW:grf' & 
-              DGP == i & Simulation == j ,'Bias'] <- aipw_grf["estimate"]-ate
-    results[Estimator == 'DR:TMLE:grf' & 
-              DGP == i & Simulation == j ,'Bias'] <- tmle_grf["estimate"]-ate
-    
+    # results[Estimator == 'DR:AIPW:grf' & 
+    #           DGP == i & Simulation == j ,'Bias'] <- aipw_grf["estimate"]-ate
+    # results[Estimator == 'DR:TMLE:grf' & 
+    #           DGP == i & Simulation == j ,'Bias'] <- tmle_grf["estimate"]-ate
+    # 
     
     #####################################
     ### --- PROGNOSTIC PROPENSITY --- ### 
@@ -798,8 +794,8 @@ for(i in dgp){
     start_time <- proc.time()
     fit_gKRLS_binom <- mgcv::gam(z ~ s(y1hat_krls, y0hat_krls, bs = "gKRLS"), 
                                  family = "binomial", data = data)
-    runtime <- proc.time() - start_time
-    runtimes[DGP == i & Simulation == j & algorithm == "Krls:pps","time"] <- runtime[2]
+    # runtime <- proc.time() - start_time
+    # runtimes[DGP == i & Simulation == j & algorithm == "Krls:pps","time"] <- runtime[2]
     # Predicted probabilities
     data$pps_krls_binom <- predict.gam(fit_gKRLS_binom, type = "response")
     
@@ -816,16 +812,16 @@ for(i in dgp){
     )
     linlog_pps <- lrn_glm$train(task = task_pps)
     data$pps_linlog <- linlog_pps$predict()
-    
-    # IPPW:Lasso
-    task_pps <- sl3_Task$new(
-      data = data,
-      outcome = "z",
-      outcome_type = "binomial",
-      covariates = c("y1hat_lasso","y0hat_lasso")
-    )
-    lasso_pps <- lrn_lasso$train(task = task_pps)
-    data$pps_lasso <- lasso_pps$predict()
+    # 
+    # # IPPW:Lasso
+    # task_pps <- sl3_Task$new(
+    #   data = data,
+    #   outcome = "z",
+    #   outcome_type = "binomial",
+    #   covariates = c("y1hat_lasso","y0hat_lasso")
+    # )
+    # lasso_pps <- lrn_lasso$train(task = task_pps)
+    # data$pps_lasso <- lasso_pps$predict()
     
     # IPPW:xgboost
     task_pps <- sl3_Task$new(
@@ -836,6 +832,17 @@ for(i in dgp){
       ))
     xgb_pps <- lrn_xgb$train(task = task_pps)
     data$pps_xgb <- xgb_pps$predict()
+    
+    # IPPW:bart
+    task_pps <- sl3_Task$new(
+      data = data,
+      outcome = "z",
+      outcome_type = "binomial",
+      covariates = c("y1hat_bart","y0hat_bart"
+      ))
+    bart_pps <- lrn_bart$train(task = task_pps)
+    data$pps_bart <- bart_pps$predict()
+    
     
     # IPPW:earth
     task_pps <- sl3_Task$new(
@@ -858,15 +865,15 @@ for(i in dgp){
       outcome = "z",
       outcome_type = "binomial",
       covariates = c("y1hat_lin","y0hat_lin",
-                     "y1hat_lasso","y0hat_lasso",
+                     "y1hat_bart","y0hat_bart",
                      "y1hat_krls","y0hat_krls",
                      "y1hat_xgb","y0hat_xgb",
                      "y1hat_earth","y0hat_earth")
     )
-    start_time <- proc.time()
+    #start_time <- proc.time()
     sl_pps <- esl$train(task = task_pps)
-    runtime <- proc.time() - start_time
-    runtimes[DGP == i & Simulation == j & algorithm == "SL:pps","time"] <- runtime[2]
+   # runtime <- proc.time() - start_time
+   # runtimes[DGP == i & Simulation == j & algorithm == "SL:pps","time"] <- runtime[2]
     data$pps_sl <- sl_pps$predict()
     
     
@@ -887,14 +894,14 @@ for(i in dgp){
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(ippw_linlog), data = data)$coefficients["z"]-ate
     
-    # IPPW: Lasso pscore
-    ippw_lasso <- weightit(formula = cobalt::f.build("z", names(covs)),
-                           ps = "pps_lasso",
+    # IPPW: bart pscore
+    ippw_bart <- weightit(formula = cobalt::f.build("z", names(covs)),
+                           ps = "pps_bart",
                            stabilize = TRUE,
                            data = data)
-    results[Estimator == 'IPPW:Lasso' & 
+    results[Estimator == 'IPPW:bart' & 
               DGP == i & Simulation == j ,'Bias'] <- 
-      lm(y ~ z, weights = get.w(ippw_lasso), data = data)$coefficients["z"]-ate
+      lm(y ~ z, weights = get.w(ippw_bart), data = data)$coefficients["z"]-ate
     
     # IPPW: xgboost
     ippw_xgb <- weightit(formula = cobalt::f.build("z", names(covs)),
@@ -929,8 +936,8 @@ for(i in dgp){
                         ps = "pps_sl",
                         stabilize = TRUE,
                         data = data)
-    runtime <- proc.time() - start_time
-    runtimes[DGP == i & Simulation == j & algorithm == "Bal:SL:pps","time"] <- runtime[2]
+    #runtime <- proc.time() - start_time
+    #runtimes[DGP == i & Simulation == j & algorithm == "Bal:SL:pps","time"] <- runtime[2]
     results[Estimator == 'IPPW:SL' & 
               DGP == i & Simulation == j ,'Bias'] <- 
       lm(y ~ z, weights = get.w(ippw_sl), data = data)$coefficients["z"]-ate
@@ -941,7 +948,7 @@ for(i in dgp){
   } # End iterations over realizations
   print(paste("End iteration",j,"of dgp",i))
   data.table::fwrite(results, "results_dorie.csv")
-  data.table::fwrite(runtimes, "runtimes_dorie.csv")
+  #data.table::fwrite(runtimes, "runtimes_dorie.csv")
   
 } # End iterations over DGPs
 
@@ -951,6 +958,8 @@ for(i in dgp){
 ```{r}
 library(tinyplot)
 library(ggplot2)
+
+ggplot(results[!is.na(results$Bias) & results$Estimator!="Bal:Ebal:expand" & abs(results$Bias)<1000,], aes(y = Estimator, x = Bias)) + geom_boxplot() + geom_vline(xintercept=0, color="red") + theme_bw()
 
 results_filter <- results |>  dplyr::filter(!is.na(Bias))
 
